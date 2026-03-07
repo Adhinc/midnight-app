@@ -35,7 +35,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     try {
       // 1. Create Auth User & Set Display Name
       final user = await _authRepository.signUpWithEmail(email, password, handle: handle);
-      
+
       if (user != null) {
         // 2. Create User Document in Firestore
         final newUser = UserModel(
@@ -43,19 +43,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
           email: email,
           handle: handle,
           role: _isListener ? 'listener' : 'seeker',
-          isOnline: _isListener, // Auto-online if listener? Or default false? Let's say false initially
-          topics: [], // Empty initially
+          isOnline: _isListener,
+          topics: [],
           createdAt: DateTime.now(),
         );
 
-        await _userService.createUser(newUser);
+        try {
+          await _userService.createUser(newUser);
+        } catch (e) {
+          // Rollback: delete auth user if Firestore profile creation fails
+          await user.delete();
+          rethrow;
+        }
 
         // 3. Save Profile Data Locally (Sync)
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isLoggedIn', true);
         await prefs.setString('handle', handle);
         await prefs.setBool('isListener', _isListener);
-        
+
         // 4. Navigate
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(

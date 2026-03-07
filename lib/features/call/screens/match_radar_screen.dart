@@ -22,6 +22,7 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
   ListenerProfile? _matchedListener;
   final _requestService = RequestService();
   StreamSubscription? _requestSubscription;
+  Timer? _timeoutTimer;
 
   @override
   void initState() {
@@ -31,6 +32,19 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
       duration: const Duration(seconds: 2),
     )..repeat();
     _startScanning();
+    _startTimeout();
+  }
+
+  void _startTimeout() {
+    _timeoutTimer = Timer(const Duration(minutes: 2), () {
+      if (!_matchFound && mounted) {
+        _requestService.cancelRequest(widget.requestId);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("No listeners available. Please try again.")),
+        );
+        Navigator.of(context).pop();
+      }
+    });
   }
 
   void _startScanning() {
@@ -118,6 +132,7 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
 
   @override
   void dispose() {
+    _timeoutTimer?.cancel();
     _controller.dispose();
     _requestSubscription?.cancel();
     super.dispose();

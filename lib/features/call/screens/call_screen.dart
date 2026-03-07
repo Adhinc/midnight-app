@@ -34,6 +34,7 @@ class _CallScreenState extends State<CallScreen>
   Timer? _timer;
   Duration _duration = Duration.zero;
   bool _isEndingCall = false;
+  bool _paymentProcessed = false;
 
   @override
   void initState() {
@@ -254,20 +255,30 @@ class _CallScreenState extends State<CallScreen>
       },
     );
 
-    if (result != null && mounted) {
+    if (result != null && mounted && !_paymentProcessed) {
+      _paymentProcessed = true;
       final tip = result['tip'] ?? 0;
       final totalAmount = AppConstants.sessionCost + tip; // Base pay + tip
 
       // Deduct from Seeker's Wallet (awaited — ensures Firestore write completes)
       try {
-        await WalletService().makePayment(
+        final success = await WalletService().makePayment(
           totalAmount.toDouble(),
           "Session Payment",
         );
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("₹$totalAmount deducted from your wallet.")),
-          );
+          if (success) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("₹$totalAmount deducted from your wallet.")),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Insufficient balance. Payment skipped."),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
         }
       } catch (e) {
         if (mounted) {

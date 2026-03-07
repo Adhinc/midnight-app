@@ -130,6 +130,11 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
       _isOnline = value;
     });
 
+    // Re-subscribe to requests when going online
+    if (value) {
+      _listenToOpenRequests();
+    }
+
     // Update status in Firestore
     final user = _auth.currentUser;
     if (user != null) {

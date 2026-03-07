@@ -221,7 +221,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         ElevatedButton(
                           onPressed: () {
                             if (activeRequest.status == 'open' ||
-                                activeRequest.status == 'pending') {
+                                activeRequest.status == 'pending' ||
+                                activeRequest.status == 'accepted') {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(

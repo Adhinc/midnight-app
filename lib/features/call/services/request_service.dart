@@ -194,8 +194,8 @@ class RequestService {
         final snapshot = await transaction.get(docRef);
         final data = snapshot.data() as Map<String, dynamic>;
 
-        // Only allow completion if currently ending or connected (safety)
-        if (data['status'] == 'ending' || data['status'] == 'connected') {
+        // Only allow completion from 'ending' state
+        if (data['status'] == 'ending') {
           transaction.update(docRef, {
             'status': 'completed',
             'rating': rating > 0 ? rating : null, // Fix #7: Only store if > 0

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -23,6 +24,9 @@ class WalletService extends ChangeNotifier {
   late Razorpay _razorpay;
   double _balance = 0.0;
   List<Transaction> _transactions = [];
+  StreamSubscription<User?>? _authSub;
+  StreamSubscription? _balanceSub;
+  StreamSubscription? _transactionsSub;
 
   double get balance => _balance;
   List<Transaction> get transactions => List.unmodifiable(_transactions);
@@ -36,10 +40,14 @@ class WalletService extends ChangeNotifier {
 
   // Listen to Firestore real-time updates
   void _listenToWallet() {
-    _auth.authStateChanges().listen((user) {
+    _authSub = _auth.authStateChanges().listen((user) {
+      // Cancel previous listeners on auth change
+      _balanceSub?.cancel();
+      _transactionsSub?.cancel();
+
       if (user != null) {
         // Listen to User Document for Balance
-        _firestore.collection('users').doc(user.uid).snapshots().listen((
+        _balanceSub = _firestore.collection('users').doc(user.uid).snapshots().listen((
           snapshot,
         ) {
           if (snapshot.exists) {
@@ -49,7 +57,7 @@ class WalletService extends ChangeNotifier {
         });
 
         // Listen to Transactions Subcollection
-        _firestore
+        _transactionsSub = _firestore
             .collection('users')
             .doc(user.uid)
             .collection('transactions')
@@ -210,12 +218,13 @@ class WalletService extends ChangeNotifier {
   }
 
   // Make Payment (for Session)
-  Future<void> makePayment(double amount, String description) async {
+  // Returns true if payment was successful, false if insufficient balance.
+  Future<bool> makePayment(double amount, String description) async {
     final user = _auth.currentUser;
-    if (user == null) return;
-    // Note: balance is checked live inside the Firestore transaction below.
+    if (user == null) return false;
 
     try {
+      bool success = false;
       await _firestore.runTransaction((transaction) async {
         final userRef = _firestore.collection('users').doc(user.uid);
         final userDoc = await transaction.get(userRef);
@@ -237,17 +246,22 @@ class WalletService extends ChangeNotifier {
               'isCredit': false,
               'status': 'success',
             });
+            success = true;
           }
         }
       });
+      return success;
     } catch (e) {
-      // Error making payment
+      return false;
     }
   }
 
   @override
   void dispose() {
-    super.dispose();
+    _authSub?.cancel();
+    _balanceSub?.cancel();
+    _transactionsSub?.cancel();
     _razorpay.clear();
+    super.dispose();
   }
 }
