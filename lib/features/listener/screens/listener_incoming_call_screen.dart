@@ -40,12 +40,20 @@ class _ListenerIncomingCallScreenState extends State<ListenerIncomingCallScreen>
   void _listenForConnection() {
     // Listen for when Seeker clicks "Connect" (status becomes 'connected')
     _requestSubscription = _requestService.streamRequestById(widget.requestId).listen((request) {
-      if (request != null && request.status == 'connected' && mounted) {
+      if (request == null || !mounted) return;
+
+      if (request.status == 'connected') {
         // Both users enter call simultaneously
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => ListenerActiveCallScreen(requestId: widget.requestId)),
         );
+      } else if (request.status == 'cancelled') {
+        // Seeker cancelled before listener could accept
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("The seeker cancelled the request.")),
+        );
+        Navigator.of(context).pop();
       }
     });
   }

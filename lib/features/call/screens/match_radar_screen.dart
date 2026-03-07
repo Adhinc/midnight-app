@@ -152,7 +152,10 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
               top: 16,
               left: 16,
               child: IconButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () {
+                  _requestService.cancelRequest(widget.requestId);
+                  Navigator.of(context).pop();
+                },
                 icon: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
