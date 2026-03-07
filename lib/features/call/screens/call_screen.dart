@@ -57,7 +57,6 @@ class _CallScreenState extends State<CallScreen>
   Future<void> _initAgora() async {
     _agoraService.onLog = (msg) {
       if (mounted) setState(() => _debugLog = msg); // Show last log
-      print(msg);
     };
 
     await _agoraService.initialize();
@@ -77,12 +76,10 @@ class _CallScreenState extends State<CallScreen>
 
     _agoraService.onUserJoined = (uid, elapsed) {
       // Listener joined or other peer
-      print("CallScreen: User joined $uid");
     };
 
     // Use a random int ID for now, or hash the user ID
     final uid = DateTime.now().millisecondsSinceEpoch % 1000000;
-    print("DEBUG: CallScreen: Joining Channel ID: '${widget.requestId}'");
     await _agoraService.joinChannel(channelId: widget.requestId, uid: uid);
   }
 
@@ -496,7 +493,7 @@ class _CallScreenState extends State<CallScreen>
                   try {
                     await _requestService.endCall(widget.requestId);
                   } catch (e) {
-                    print("Error ending call during block: $e");
+                    // Error ending call during block
                   }
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(

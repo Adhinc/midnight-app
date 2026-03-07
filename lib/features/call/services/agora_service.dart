@@ -42,7 +42,6 @@ class AgoraService {
     if (onLog != null) onLog!("AgoraService: Permission request completed");
 
     if (AppConstants.agoraAppId == "YOUR_AGORA_APP_ID") {
-      print("AGORA ERROR: App ID is missing in constants.dart");
       if (onLog != null) onLog!("AGORA ERROR: App ID missing");
       return;
     }
@@ -63,18 +62,13 @@ class AgoraService {
       if (onLog != null) onLog!("AgoraService: Engine initialize() returned.");
     } catch (e) {
       if (onLog != null) onLog!("AgoraService: CRITICAL INIT ERROR: $e");
-      print("Agora Critical Error: $e");
       return;
     }
 
-    print("AgoraService: Registering event handler...");
     if (onLog != null) onLog!("AgoraService: Registering event handler...");
     _engine!.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-          print(
-            "✅ AGORA: local user ${connection.localUid} joined channel ${connection.channelId}",
-          );
           currentUid = connection.localUid; // Capture UID
           if (onLog != null) {
             onLog!(
@@ -86,7 +80,6 @@ class AgoraService {
           }
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-          print("Agora: remote user $remoteUid joined");
           if (onLog != null) onLog!("Agora Event: User $remoteUid Joined");
           if (onUserJoined != null) onUserJoined!(remoteUid, elapsed);
         },
@@ -96,12 +89,10 @@ class AgoraService {
               int remoteUid,
               UserOfflineReasonType reason,
             ) {
-              print("Agora: remote user $remoteUid left channel");
               if (onLog != null) onLog!("Agora Event: User $remoteUid Offline");
               if (onUserOffline != null) onUserOffline!(remoteUid);
             },
         onError: (ErrorCodeType err, String msg) {
-          print("❌ AGORA ERROR CODE: $err, MSG: $msg");
           if (onLog != null) onLog!("❌ ERROR: $err - $msg");
         },
         onConnectionStateChanged:
@@ -110,17 +101,14 @@ class AgoraService {
               ConnectionStateType state,
               ConnectionChangedReasonType reason,
             ) {
-              print("🔄 Agora Connection State: $state, Reason: $reason");
               if (onLog != null) {
                 onLog!("🔄 State: ${state.name}, Reason: ${reason.name}");
               }
             },
         onLeaveChannel: (RtcConnection connection, RtcStats stats) {
-          print("⚠️ LEFT CHANNEL: ${connection.channelId}");
           if (onLog != null) onLog!("⚠️ Left channel unexpectedly!");
         },
         onRequestToken: (RtcConnection connection) {
-          print("🔑 TOKEN REQUESTED");
           if (onLog != null) onLog!("🔑 Token requested - check App ID config");
         },
       ),
@@ -137,7 +125,6 @@ class AgoraService {
     required String channelId,
     required int uid,
   }) async {
-    print("AgoraService: Attempting to join channel $channelId as $uid");
     if (onLog != null) onLog!("AgoraService: Joining channel $channelId...");
 
     if (!_isInitialized) await initialize();
@@ -160,7 +147,6 @@ class AgoraService {
       // Skip preview for web - it's not supported -> Wait, let's TRY it to see if it triggers permissions
       // await _engine!.startPreview(); // DISABLED: We only want Audio, don't ask for Camera!
 
-      print("✅ AgoraService: joinChannel command sent successfully");
       if (onLog != null) {
         onLog!(
           "✅ joinChannel sent! App ID: ${AppConstants.agoraAppId.substring(0, 8)}...",
@@ -171,7 +157,6 @@ class AgoraService {
       await Future.delayed(const Duration(milliseconds: 500));
       if (onLog != null) onLog!("⏳ Waiting for Agora callback...");
     } catch (e) {
-      print("AGORA JOIN EXCEPTION: $e");
       if (onLog != null) onLog!("AGORA JOIN EXCEPTION: $e");
     }
   }

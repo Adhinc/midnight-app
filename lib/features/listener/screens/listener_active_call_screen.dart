@@ -62,7 +62,6 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
     // 1. Setup Logger FIRST
     _agoraService.onLog = (msg) {
       if (mounted) setState(() => _debugLog = msg);
-      print(msg);
     };
 
     try {
@@ -85,7 +84,6 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
 
       _agoraService.onUserJoined = (uid, elapsed) {
         // Seeker joined
-        print("ListenerActiveCallScreen: User joined $uid");
       };
 
       // 4. Join Channel
@@ -103,7 +101,6 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
       }
     } catch (e) {
       if (mounted) setState(() => _debugLog = "INIT EXCEPTION: $e");
-      print("Agora Init Exception: $e");
     }
   }
 

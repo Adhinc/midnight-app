@@ -43,7 +43,7 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
         }
       }
     } catch (e) {
-      debugPrint("Error loading payment details: $e");
+      // Error loading payment details
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

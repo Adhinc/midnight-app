@@ -26,7 +26,6 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
   @override
   void initState() {
     super.initState();
-    print("MatchRadar: initState called for requestId: ${widget.requestId}");
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -35,18 +34,12 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
   }
 
   void _startScanning() {
-    print("MatchRadar: Starting to listen for request ${widget.requestId}");
     // Listen to request status changes
     _requestSubscription = _requestService
         .streamRequestById(widget.requestId)
         .listen(
           (request) async {
-            print(
-              "MatchRadar: Received request update - Status: ${request?.status}, ListenerId: ${request?.listenerId}",
-            );
-
             if (request != null && request.status == 'accepted' && mounted) {
-              print("MatchRadar: MATCH DETECTED! Fetching listener profile...");
 
               // Fetch actual listener profile data from Firestore
               String lId = request.listenerId ?? '';
@@ -58,8 +51,8 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
                       .doc(lId)
                       .get();
                   userData = userDoc.data() ?? {};
-                } catch (e) {
-                  print("MatchRadar: Failed to fetch listener data: $e");
+                } catch (_) {
+                  // Failed to fetch listener data
                 }
               }
 
@@ -82,30 +75,23 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
                   );
                   _matchFound = true;
                 });
-                print("MatchRadar: Match UI updated with real data!");
               }
             }
           },
 
-          onError: (error) {
-            print("MatchRadar: Stream error: $error");
-          },
-          onDone: () {
-            print("MatchRadar: Stream closed");
-          },
+          onError: (_) {},
+          onDone: () {},
         );
   }
 
   void _onConnect() async {
     // Set request status to 'connected' - both users enter call simultaneously
-    print("MatchRadar: Calling connectRequest for ${widget.requestId}");
     try {
       // Stop listening to this request as we are connecting
       _requestSubscription?.cancel();
       await _requestService.connectRequest(widget.requestId);
-      print("MatchRadar: connectRequest completed successfully");
-    } catch (e) {
-      print("MatchRadar: connectRequest FAILED: $e");
+    } catch (_) {
+      // connectRequest failed
     }
 
     if (!mounted) return;

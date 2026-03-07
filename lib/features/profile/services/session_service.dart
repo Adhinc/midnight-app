@@ -55,7 +55,7 @@ class SessionService {
       sessions.sort((a, b) => b.date.compareTo(a.date));
       return sessions;
     } catch (e) {
-      print('SessionService error: $e');
+      // SessionService error
       return [];
     }
   }

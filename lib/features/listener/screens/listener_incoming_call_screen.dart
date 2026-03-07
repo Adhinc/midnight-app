@@ -33,18 +33,14 @@ class _ListenerIncomingCallScreenState extends State<ListenerIncomingCallScreen>
   @override
   void initState() {
     super.initState();
-    print("ListenerIncoming: initState called for requestId: ${widget.requestId}");
     _controller = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
     _listenForConnection();
   }
 
   void _listenForConnection() {
     // Listen for when Seeker clicks "Connect" (status becomes 'connected')
-    print("ListenerIncoming: Starting to listen for requestId: ${widget.requestId}");
     _requestSubscription = _requestService.streamRequestById(widget.requestId).listen((request) {
-      print("ListenerIncoming: Received update - Status: ${request?.status}");
       if (request != null && request.status == 'connected' && mounted) {
-        print("ListenerIncoming: CONNECTED! Navigating to call...");
         // Both users enter call simultaneously
         Navigator.pushReplacement(
           context,

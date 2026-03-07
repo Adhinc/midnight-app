@@ -29,13 +29,10 @@ class UserService {
 
   // Update Listener Status
   Future<void> updateListenerStatus(String uid, bool isOnline) async {
-    print("UserService: Attempting to update status for $uid to $isOnline");
     try {
       // Using set with merge is sometimes more robust than update if document existence is flaky
       await _usersCollection.doc(uid).set({'isOnline': isOnline}, SetOptions(merge: true));
-      print("UserService: Update successful!");
     } catch (e) {
-      print("UserService: Update failed: $e");
       throw Exception("Failed to update status: $e");
     }
   }

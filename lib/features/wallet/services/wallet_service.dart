@@ -100,26 +100,23 @@ class WalletService extends ChangeNotifier {
     try {
       _razorpay.open(options);
     } catch (e) {
-      debugPrint('Error: $e');
+      // Razorpay checkout error
     }
   }
 
   void _handlePaymentSuccess(PaymentSuccessResponse response) async {
     // Payment Successful - No longer update balance from here!
     // The balance will be updated by the Cloud Function webhook securely.
-    debugPrint("Payment Successful: ${response.paymentId}");
-    debugPrint("Verification is in progress via backend...");
-
     // Notify UI that verification is pending
     notifyListeners();
   }
 
   void _handlePaymentError(PaymentFailureResponse response) {
-    debugPrint("Payment Error: ${response.code} - ${response.message}");
+    // Payment error handled by Razorpay UI
   }
 
   void _handleExternalWallet(ExternalWalletResponse response) {
-    debugPrint("External Wallet: ${response.walletName}");
+    // External wallet selected
   }
 
   Future<void> addEarnings(
@@ -139,10 +136,7 @@ class WalletService extends ChangeNotifier {
         if (requestDoc.exists) {
           final isPaid = requestDoc.data()?['isPaid'] ?? false;
           if (isPaid) {
-            debugPrint(
-              "WalletService: Request $requestId already paid. Skipping.",
-            );
-            return; // Abort transaction
+            return; // Already paid, abort transaction
           }
           // Mark as paid IMMEDIATELY in the same transaction
           transaction.update(requestRef, {'isPaid': true});
@@ -175,7 +169,7 @@ class WalletService extends ChangeNotifier {
         });
       });
     } catch (e) {
-      debugPrint("Error adding earnings: $e");
+      // Error adding earnings
     }
   }
 
@@ -211,7 +205,7 @@ class WalletService extends ChangeNotifier {
         }
       });
     } catch (e) {
-      debugPrint("Error withdrawing: $e");
+      // Error withdrawing
     }
   }
 
@@ -247,7 +241,7 @@ class WalletService extends ChangeNotifier {
         }
       });
     } catch (e) {
-      debugPrint("Error making payment: $e");
+      // Error making payment
     }
   }
 

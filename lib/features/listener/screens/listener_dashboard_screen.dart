@@ -109,7 +109,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Error fetching status: $e");
+      // Error fetching status
     }
   }
 
@@ -133,7 +133,6 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
     // Update status in Firestore
     final user = _auth.currentUser;
     if (user != null) {
-      print("Dashboard: Toggling status for ${user.uid} to $value");
       _userService.updateListenerStatus(user.uid, value).catchError((e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -603,7 +602,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
                   'topics': _selectedTopics.toList(),
                 }, SetOptions(merge: true));
           } catch (e) {
-            print("Dashboard: Failed to save topic preference: $e");
+            // Failed to save topic preference
           }
         }
       },

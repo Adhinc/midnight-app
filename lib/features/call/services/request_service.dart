@@ -77,17 +77,10 @@ class RequestService {
 
   // Stream a specific request by ID (for Seekers waiting for match)
   Stream<HelpRequest?> streamRequestById(String requestId) {
-    print("RequestService: Starting stream for requestId: $requestId");
     return _requestsCollection.doc(requestId).snapshots().map((doc) {
-      print(
-        "RequestService: Document snapshot received - exists: ${doc.exists}, data: ${doc.data()}",
-      );
       if (doc.exists) {
-        final request = HelpRequest.fromMap(doc.data() as Map<String, dynamic>);
-        print("RequestService: Parsed request - status: ${request.status}");
-        return request;
+        return HelpRequest.fromMap(doc.data() as Map<String, dynamic>);
       }
-      print("RequestService: Document does not exist");
       return null;
     });
   }
@@ -258,7 +251,6 @@ class RequestService {
         'rating': double.parse(averageRating.toStringAsFixed(1)),
       };
     } catch (e) {
-      print("Error fetching listener stats: $e");
       return {'sessions': 0, 'rating': 0.0};
     }
   }
@@ -278,7 +270,7 @@ class RequestService {
           .map((doc) => HelpRequest.fromMap(doc.data() as Map<String, dynamic>))
           .toList();
     } catch (e) {
-      print("Error fetching completed requests: $e");
+      // Index missing, try client-side sorting fallback
       // If index is missing, try client-side sorting (less efficient but works without index deployment immediately)
       try {
         final querySnapshot = await _requestsCollection
@@ -295,7 +287,6 @@ class RequestService {
         requests.sort((a, b) => b.timestamp.compareTo(a.timestamp));
         return requests;
       } catch (e2) {
-        print("Error fetching completed requests fallback: $e2");
         return [];
       }
     }
