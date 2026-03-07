@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "913566234493",
+    "project_id": "midnight-app-31012026",
+    "storage_bucket": "midnight-app-31012026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:913566234493:android:c2418ff95894675d5c7e14",
+        "android_client_info": {
+          "package_name": "com.midnight.app.midnight_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyvFPx9Yhkkk8OpfpKk-F_ywfFn2rJODs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

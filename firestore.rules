@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // User profile rules
+    match /users/{userId} {
+      // Allow users to read their own data
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow users to create their document but with 0 balance
+      allow create: if request.auth != null && request.auth.uid == userId 
+                    && request.resource.data.walletBalance == 0;
+                    
+      // Allow users to update their profile data, but NOT the walletBalance
+      allow update: if request.auth != null && request.auth.uid == userId
+                    && request.resource.data.walletBalance == resource.data.walletBalance;
+
+      // Transactions subcollection
+      match /transactions/{transactionId} {
+        // Users can read their own transactions
+        allow read: if request.auth != null && request.auth.uid == userId;
+        
+        // Users CANNOT write to transactions (only Cloud Functions/Admin)
+        allow write: if false;
+      }
+    }
+    
+    // Call requests rules
+    match /requests/{requestId} {
+      allow read, write: if request.auth != null; // MVP rules, can be hardened later
+    }
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

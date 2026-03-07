@@ -1,0 +1,404 @@
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/theme.dart';
+import '../../auth/screens/login_screen.dart';
+import 'legal_screen.dart';
+
+class AccountSettingsScreen extends StatelessWidget {
+  const AccountSettingsScreen({super.key});
+
+  Future<void> _changePasswordInApp(BuildContext context) async {
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool isLoading = false;
+    String? errorMessage;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1A2E),
+            title: const Text(
+              "Change Password",
+              style: TextStyle(color: Colors.white),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Text(
+                        errorMessage!,
+                        style: const TextStyle(color: Colors.red, fontSize: 14),
+                      ),
+                    ),
+                  TextField(
+                    controller: currentPasswordController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: "Current Password",
+                      labelStyle: const TextStyle(color: Colors.grey),
+                      filled: true,
+                      fillColor: MidnightTheme.surfaceColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: newPasswordController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: "New Password",
+                      labelStyle: const TextStyle(color: Colors.grey),
+                      filled: true,
+                      fillColor: MidnightTheme.surfaceColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: confirmPasswordController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: "Confirm New Password",
+                      labelStyle: const TextStyle(color: Colors.grey),
+                      filled: true,
+                      fillColor: MidnightTheme.surfaceColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.pop(ctx),
+                child: const Text(
+                  "Cancel",
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: MidnightTheme.primaryColor,
+                ),
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                        final current = currentPasswordController.text;
+                        final newPass = newPasswordController.text;
+                        final confirm = confirmPasswordController.text;
+
+                        if (current.isEmpty ||
+                            newPass.isEmpty ||
+                            confirm.isEmpty) {
+                          setState(
+                            () => errorMessage = "Please fill all fields",
+                          );
+                          return;
+                        }
+
+                        if (newPass != confirm) {
+                          setState(
+                            () => errorMessage = "New passwords do not match",
+                          );
+                          return;
+                        }
+
+                        if (newPass.length < 6) {
+                          setState(
+                            () => errorMessage =
+                                "New password must be at least 6 characters",
+                          );
+                          return;
+                        }
+
+                        setState(() {
+                          isLoading = true;
+                          errorMessage = null;
+                        });
+
+                        try {
+                          final user = FirebaseAuth.instance.currentUser;
+                          if (user != null && user.email != null) {
+                            // 1. Re-authenticate user
+                            final credential = EmailAuthProvider.credential(
+                              email: user.email!,
+                              password: current,
+                            );
+                            await user.reauthenticateWithCredential(credential);
+
+                            // 2. Update password
+                            await user.updatePassword(newPass);
+
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    "Password changed successfully!",
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        } on FirebaseAuthException catch (e) {
+                          setState(() {
+                            if (e.code == 'invalid-credential' ||
+                                e.code == 'wrong-password') {
+                              errorMessage = "Incorrect current password";
+                            } else {
+                              errorMessage = e.message ?? "An error occurred";
+                            }
+                            isLoading = false;
+                          });
+                        } catch (e) {
+                          setState(() {
+                            errorMessage = e.toString();
+                            isLoading = false;
+                          });
+                        }
+                      },
+                child: isLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.black,
+                        ),
+                      )
+                    : const Text(
+                        "Save",
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _deleteAccount(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text(
+          "Delete Account",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          "This will permanently delete your account and all your data. This cannot be undone.",
+          style: TextStyle(color: Colors.grey),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Delete user Firestore document
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .delete();
+        // Delete Firebase Auth account
+        await user.delete();
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+
+      if (context.mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Error deleting account: $e\nPlease re-login and try again.",
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: MidnightTheme.bgColor,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text(
+          "Account Settings",
+          style: TextStyle(color: Colors.white),
+        ),
+        leading: const BackButton(color: Colors.white),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          _buildSectionHeader("Coming Soon"),
+          _buildComingSoonTile(
+            "Notifications",
+            "Receive alerts for incoming calls",
+          ),
+          _buildComingSoonTile("Dark Mode", "Toggle app theme"),
+          _buildComingSoonTile("Incognito Mode", "Hide your online status"),
+
+          const SizedBox(height: 32),
+          _buildSectionHeader("Legal"),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              "Privacy Policy",
+              style: TextStyle(color: Colors.white),
+            ),
+            subtitle: const Text(
+              "How we handle your data",
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LegalScreen(
+                  title: "Privacy Policy",
+                  content: LegalScreen.getPrivacyPolicy(),
+                ),
+              ),
+            ),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              "Terms of Use",
+              style: TextStyle(color: Colors.white),
+            ),
+            subtitle: const Text(
+              "Rules for using Midnight",
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LegalScreen(
+                  title: "Terms of Use",
+                  content: LegalScreen.getTermsOfUse(),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 32),
+          _buildSectionHeader("Account"),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              "Change Password",
+              style: TextStyle(color: Colors.white),
+            ),
+            subtitle: const Text(
+              "Update your password securely",
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+            onTap: () => _changePasswordInApp(context),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              "Delete Account",
+              style: TextStyle(color: Colors.red),
+            ),
+            subtitle: const Text(
+              "Permanently remove your account",
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            trailing: const Icon(Icons.chevron_right, color: Colors.red),
+            onTap: () => _deleteAccount(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Text(
+        title.toUpperCase(),
+        style: const TextStyle(
+          color: MidnightTheme.secondaryColor,
+          fontWeight: FontWeight.bold,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildComingSoonTile(String title, String subtitle) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(title, style: const TextStyle(color: Colors.white54)),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(color: Colors.grey, fontSize: 12),
+      ),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          "Soon",
+          style: TextStyle(color: Colors.grey, fontSize: 11),
+        ),
+      ),
+    );
+  }
+}
