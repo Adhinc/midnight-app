@@ -174,6 +174,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
+                Center(
+                  child: Text(
+                    "v1.0.0",
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.3),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
