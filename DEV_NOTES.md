@@ -118,23 +118,9 @@ open → pending → accepted → connected → ending → completed
 
 ---
 
-## 5. Rejoin Call Feature - How It Works
+## 5. Rejoin Call Feature — REMOVED (Session 2)
 
-### Detection
-Both `home_screen.dart` and `listener_dashboard_screen.dart` use `StreamBuilder` with `streamActiveRequests()` — queries Firestore for requests where user is seeker or listener AND status is `pending`, `accepted`, or `connected`.
-
-### Routing (Seeker)
-- `open` / `pending` / `accepted` → `MatchRadarScreen`
-- `connected` → `CallScreen`
-
-### Routing (Listener)
-- `pending` / `accepted` → `ListenerIncomingCallScreen`
-- `connected` → `ListenerActiveCallScreen`
-
-### Known Gaps
-1. No server-side timeout for stale `connected` calls (needs Cloud Function)
-2. No check if other user is still in Agora channel on rejoin
-3. No "other user left" notification
+Rejoin call banners were removed from both `home_screen.dart` and `listener_dashboard_screen.dart`. The `streamActiveRequests()` method was also removed from `request_service.dart` as it was no longer needed.
 
 ---
 
@@ -143,20 +129,21 @@ Both `home_screen.dart` and `listener_dashboard_screen.dart` use `StreamBuilder`
 ### CRITICAL (Do Before Launch)
 - [ ] Move API keys to `.env` file, add `.env` to `.gitignore`
 - [ ] Rotate Agora & Razorpay keys (already exposed in public repo)
-- [ ] Tighten Firestore security rules (restrict by user ID)
+- [x] ~~Tighten Firestore security rules (restrict by user ID)~~ — Done (Session 2)
 - [ ] Set up Agora token server (currently using empty token)
+- [ ] Switch Razorpay to live key (`rzp_live_...`)
 
 ### HIGH
 - [ ] Add input validation (email format, password strength)
-- [ ] Dispose TextEditingControllers in login, signup, edit profile screens
+- [x] ~~Dispose TextEditingControllers~~ — Fixed in edit_profile_screen (Session 2)
 - [ ] Add Firebase Crashlytics for crash reporting
 - [ ] Write tests for critical flows (auth, wallet, call lifecycle)
 - [ ] Add stale call cleanup (Cloud Function to auto-end after 30 min inactivity)
+- [ ] Document webhook secret setup (`firebase functions:config:set razorpay.webhook_secret`)
 
 ### MEDIUM
 - [ ] Use `cached_network_image` package for network images
 - [ ] Move `device_preview` to dev_dependencies
-- [ ] Add empty channel detection on rejoin
 - [ ] Add "other user left" notification
 - [ ] Extract SharedPreferences initialization to singleton service
 - [ ] Add proper logging framework (replace removed prints with `logger` package)
@@ -222,3 +209,52 @@ Using Personal Access Token (PAT) since the machine's Git account (`admin-cureo`
 3. Delete token from GitHub immediately after push
 
 **Important:** Always delete the token after use. Tokens grant access to ALL repos under the account, not just one.
+
+---
+
+## Session 2: 2026-03-09
+
+### Commit 1: End-call confirmation + remove rejoin banners
+**Files changed:** 6 files
+
+- Added "End Call?" confirmation dialog on both seeker (`call_screen.dart`) and listener (`listener_active_call_screen.dart`) sides
+- Removed rejoin call banners from `home_screen.dart` and `listener_dashboard_screen.dart`
+- Removed unused `streamActiveRequests()` from `request_service.dart`
+- Added TODO comment for `cleanupStaleCalls` in `functions/index.js`
+
+### Commit 2: Fix 18 bugs across security, payments, and stability
+**Files changed:** 12 files (+259, -116 lines)
+
+#### Security (4 fixes)
+1. **Firestore rules hardened** — Restrict request read/write to seeker/listener only; listeners can read open requests for matching; block client-side `isPaid` changes
+2. **Negative balance prevention** — Added `walletBalance >= 0` rule in Firestore
+3. **Transaction records secured** — Clients can create but not update/delete transaction records
+4. **Tip/rating validation** — Tip clamped to 0-1000, rating to 0-5 on both client and service level
+
+#### Payments (4 fixes)
+5. **Tip payment lost** — Combined base + tip into single `addEarnings()` call to avoid `isPaid` flag blocking the tip
+6. **Payment + completion atomic** — New `makePaymentAndCompleteCall()` method wraps wallet deduction + request completion in single Firestore transaction
+7. **Live balance check** — Fetch balance from Firestore before creating request, not just cached value
+8. **Cancel all active requests** — `createRequest()` now cancels `open`, `pending`, and `accepted` requests (was only `open`)
+
+#### Stability (10 fixes)
+9. **Stream subscription leaks** — Store and cancel auth + request subscriptions in `listener_dashboard_screen.dart` dispose
+10. **Agora callback leaks** — Clear all Agora callbacks (`onLog`, `onJoinChannelSuccess`, `onError`, `onUserJoined`) in dispose on both call screens
+11. **Bogus stream cancel removed** — Removed line that created a new stream just to cancel it in `call_screen.dart`
+12. **PopScope on call screens** — Back button now triggers end-call confirmation instead of bypassing it
+13. **Listener payment timeout** — 2-minute timeout on `listener_waiting_payment_screen.dart`; auto-navigates to earnings if seeker doesn't pay
+14. **Duplicate earnings guard** — Added `_hasAddedEarnings` flag in `listener_earnings_screen.dart`
+15. **Mounted check after image picker** — Prevents setState crash in `edit_profile_screen.dart`
+16. **Error feedback on failed earnings** — `addEarnings()` returns bool; shows red snackbar on failure
+17. **Block operation atomic** — Used Firestore batch write in `moderation_service.dart`
+18. **Account deletion order** — Delete auth first, then Firestore data (prevents orphaned data)
+19. **Dead code removed** — Unused `_RatingBar` widget and `_currentRating` field
+
+### Commit 3: Payment gateway fixes
+**Files changed:** 3 files
+
+20. **Payment error feedback** — Added `onPaymentError` callback to `WalletService`; wallet screen shows red snackbar on Razorpay payment failure
+21. **Webhook 400 on missing userId** — Changed from 200 to 400 response when userId is missing in payment notes
+
+### Firestore Index (Manual)
+- Created composite index in Firebase Console: `requests` collection — `listenerId` (Asc), `status` (Asc), `timestamp` (Desc)
