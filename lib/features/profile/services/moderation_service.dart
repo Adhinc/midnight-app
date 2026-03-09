@@ -36,19 +36,24 @@ class ModerationService {
     if (currentUser == null) throw Exception("Not logged in");
 
     try {
-      // Add to a global 'blocks' collection
+      // Atomic: both writes in a single batch
+      final batch = _firestore.batch();
+
+      // Add to global 'blocks' collection
       final blockRef = _firestore.collection('blocks').doc();
-      await blockRef.set({
+      batch.set(blockRef, {
         'blockedByUid': currentUser.uid,
         'blockedUid': blockedUid,
         'timestamp': FieldValue.serverTimestamp(),
       });
 
       // Also maintain an array on the user's profile for quick local filtering
-      await _firestore.collection('users').doc(currentUser.uid).update({
+      final userRef = _firestore.collection('users').doc(currentUser.uid);
+      batch.update(userRef, {
         'blockedUsers': FieldValue.arrayUnion([blockedUid]),
       });
 
+      await batch.commit();
     } catch (e) {
       throw Exception("Failed to block user.");
     }

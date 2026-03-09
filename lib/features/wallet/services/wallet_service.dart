@@ -127,13 +127,13 @@ class WalletService extends ChangeNotifier {
     // External wallet selected
   }
 
-  Future<void> addEarnings(
+  Future<bool> addEarnings(
     double amount,
     String description,
     String requestId,
   ) async {
     final user = _auth.currentUser;
-    if (user == null) return;
+    if (user == null) return false;
 
     try {
       await _firestore.runTransaction((transaction) async {
@@ -176,8 +176,10 @@ class WalletService extends ChangeNotifier {
           'requestId': requestId,
         });
       });
+      return true;
     } catch (e) {
-      // Error adding earnings
+      debugPrint('Error adding earnings: $e');
+      return false;
     }
   }
 
@@ -213,7 +215,7 @@ class WalletService extends ChangeNotifier {
         }
       });
     } catch (e) {
-      // Error withdrawing
+      debugPrint('Error withdrawing: $e');
     }
   }
 
@@ -249,6 +251,76 @@ class WalletService extends ChangeNotifier {
             success = true;
           }
         }
+      });
+      return success;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Atomic payment + call completion in a single transaction
+  // Returns true if successful, false if insufficient balance
+  Future<bool> makePaymentAndCompleteCall({
+    required double amount,
+    required String description,
+    required String requestId,
+    required int rating,
+    required int tip,
+  }) async {
+    // Validate inputs
+    if (amount < 0 || tip < 0 || tip > 1000 || rating < 0 || rating > 5) {
+      return false;
+    }
+
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      bool success = false;
+      await _firestore.runTransaction((transaction) async {
+        final userRef = _firestore.collection('users').doc(user.uid);
+        final requestRef = _firestore.collection('requests').doc(requestId);
+
+        final userDoc = await transaction.get(userRef);
+        final requestDoc = await transaction.get(requestRef);
+
+        // Verify request is in 'ending' state
+        if (!requestDoc.exists) return;
+        final requestData = requestDoc.data() as Map<String, dynamic>;
+        if (requestData['status'] != 'ending') return;
+
+        // Check balance
+        if (!userDoc.exists) return;
+        final currentBalance =
+            (userDoc.data()?['walletBalance'] ?? 0.0).toDouble();
+        if (currentBalance < amount) return;
+
+        // Deduct balance
+        transaction.update(userRef, {
+          'walletBalance': currentBalance - amount,
+        });
+
+        // Record transaction
+        final txRef = userRef.collection('transactions').doc();
+        transaction.set(txRef, {
+          'id': txRef.id,
+          'title': description,
+          'amount': amount,
+          'date': FieldValue.serverTimestamp(),
+          'isCredit': false,
+          'status': 'success',
+          'requestId': requestId,
+        });
+
+        // Complete the call
+        transaction.update(requestRef, {
+          'status': 'completed',
+          'rating': rating > 0 ? rating : null,
+          'tip': tip,
+          'completedAt': DateTime.now().toIso8601String(),
+        });
+
+        success = true;
       });
       return success;
     } catch (e) {

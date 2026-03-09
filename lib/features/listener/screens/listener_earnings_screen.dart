@@ -23,6 +23,8 @@ class _ListenerEarningsScreenState extends State<ListenerEarningsScreen> {
   final RequestService _requestService = RequestService();
   HelpRequest? _request;
   bool _isLoading = true;
+  bool _hasAddedEarnings = false;
+
   @override
   void initState() {
     super.initState();
@@ -36,30 +38,32 @@ class _ListenerEarningsScreenState extends State<ListenerEarningsScreen> {
         _request = request;
         _isLoading = false;
       });
-      if (request != null) {
+      if (request != null && !_hasAddedEarnings) {
+        _hasAddedEarnings = true;
         _addToWallet(request);
       }
     }
   }
 
-  void _addToWallet(HelpRequest request) {
-    // Simulate adding the earnings to the wallet
+  Future<void> _addToWallet(HelpRequest request) async {
     final walletService = WalletService();
-
-    // Check if this transaction has already been added in this session to prevent dupes on rebuilds
-    // (In a real app, this would be handled by ID checks or backend)
-
-    // Add Base Pay
-    walletService.addEarnings(
-      AppConstants.sessionBasePay.toDouble(),
-      "Session Earnings (Base)",
-      request.id,
-    );
-
-    // Add Tip (from request data)
+    final basePay = AppConstants.sessionBasePay.toDouble();
     final tipAmount = (request.tip ?? 0).toDouble();
-    if (tipAmount > 0) {
-      walletService.addEarnings(tipAmount, "Session Tip (User)", request.id);
+    final totalAmount = basePay + tipAmount;
+
+    // Single call with total amount to avoid isPaid flag blocking the tip
+    final description = tipAmount > 0
+        ? "Session Earnings (₹${basePay.toInt()} base + ₹${tipAmount.toInt()} tip)"
+        : "Session Earnings (Base)";
+
+    final success = await walletService.addEarnings(totalAmount, description, request.id);
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Failed to add earnings. Please contact support."),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 

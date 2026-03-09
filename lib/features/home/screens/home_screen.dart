@@ -9,6 +9,7 @@ import '../../profile/screens/profile_screen.dart';
 import '../../call/services/request_service.dart';
 import '../../call/models/help_request.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../wallet/services/wallet_service.dart';
 class HomeScreen extends StatefulWidget {
   final bool isListener;
@@ -19,11 +20,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // walletBalance removed
   String? selectedMood;
   String _handle = "User";
   final _requestService = RequestService();
   final _auth = FirebaseAuth.instance;
+  final _walletService = WalletService();
   bool _isProcessing = false;
 
   @override
@@ -96,10 +97,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(width: 8),
                     ListenableBuilder(
-                      listenable: WalletService(),
+                      listenable: _walletService,
                       builder: (context, _) {
                         return Text(
-                          "₹${WalletService().balance.toInt()}",
+                          "₹${_walletService.balance.toInt()}",
                           style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -176,9 +177,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Low-balance warning banner
             ListenableBuilder(
-              listenable: WalletService(),
+              listenable: _walletService,
               builder: (context, _) {
-                final balance = WalletService().balance;
+                final balance = _walletService.balance;
                 final sessionCost = AppConstants.sessionCost.toDouble();
                 if (balance >= sessionCost) return const SizedBox.shrink();
                 return GestureDetector(
@@ -230,10 +231,10 @@ class _HomeScreenState extends State<HomeScreen> {
             // Hero Button
             Center(
               child: ListenableBuilder(
-                listenable: WalletService(),
+                listenable: _walletService,
                 builder: (context, _) {
                   final hasBalance =
-                      WalletService().balance >= AppConstants.sessionCost;
+                      _walletService.balance >= AppConstants.sessionCost;
                   return GestureDetector(
                     onTap: () async {
                       if (_isProcessing) return;
@@ -279,6 +280,23 @@ class _HomeScreenState extends State<HomeScreen> {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text("Please log in first"),
+                              ),
+                            );
+                          }
+                          return;
+                        }
+
+                        // Re-check balance from Firestore before creating request
+                        final userDoc = await FirebaseFirestore.instance
+                            .collection('users').doc(user.uid).get();
+                        final liveBalance = (userDoc.data()?['walletBalance'] ?? 0.0).toDouble();
+                        if (liveBalance < AppConstants.sessionCost) {
+                          if (mounted) {
+                            setState(() => _isProcessing = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Insufficient balance. Please add money first."),
+                                backgroundColor: Colors.orange,
                               ),
                             );
                           }

@@ -233,13 +233,15 @@ class AccountSettingsScreen extends StatelessWidget {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // Delete user Firestore document
+        final uid = user.uid;
+        // Delete Firebase Auth account FIRST (more likely to fail if re-auth needed)
+        // If this fails, Firestore data is preserved — no data loss
+        await user.delete();
+        // Only delete Firestore data after auth deletion succeeds
         await FirebaseFirestore.instance
             .collection('users')
-            .doc(user.uid)
+            .doc(uid)
             .delete();
-        // Delete Firebase Auth account
-        await user.delete();
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();

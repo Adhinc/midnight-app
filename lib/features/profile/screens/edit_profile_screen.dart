@@ -72,6 +72,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
 
     if (pickedFile == null) return; // User canceled picking
+    if (!mounted) return;
 
     setState(() => _isUploadingPic = true);
 

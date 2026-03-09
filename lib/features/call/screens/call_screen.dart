@@ -27,7 +27,6 @@ class _CallScreenState extends State<CallScreen>
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  final int _currentRating = 0;
   bool _isAgoraConnected = false;
   final _agoraService = AgoraService();
   bool _isMuted = false;
@@ -88,8 +87,12 @@ class _CallScreenState extends State<CallScreen>
   void dispose() {
     _timer?.cancel();
     _pulseController.dispose();
-    _requestService.streamRequestById(widget.requestId).listen((_) {}).cancel();
     _requestSubscription?.cancel();
+    // Clear Agora callbacks to prevent firing after dispose
+    _agoraService.onLog = null;
+    _agoraService.onJoinChannelSuccess = null;
+    _agoraService.onError = null;
+    _agoraService.onUserJoined = null;
     _agoraService.dispose();
     super.dispose();
   }
@@ -289,14 +292,18 @@ class _CallScreenState extends State<CallScreen>
 
     if (result != null && mounted && !_paymentProcessed) {
       _paymentProcessed = true;
-      final tip = result['tip'] ?? 0;
+      final tip = (result['tip'] ?? 0).clamp(0, 1000); // Prevent negative or absurd tips
+      final rating = (result['rating'] ?? 0).clamp(0, 5); // Rating must be 0-5
       final totalAmount = AppConstants.sessionCost + tip; // Base pay + tip
 
-      // Deduct from Seeker's Wallet (awaited — ensures Firestore write completes)
+      // Atomic: deduct wallet + complete call in a single transaction
       try {
-        final success = await WalletService().makePayment(
-          totalAmount.toDouble(),
-          "Session Payment",
+        final success = await WalletService().makePaymentAndCompleteCall(
+          amount: totalAmount.toDouble(),
+          description: "Session Payment",
+          requestId: widget.requestId,
+          rating: rating,
+          tip: tip,
         );
         if (mounted) {
           if (success) {
@@ -323,12 +330,6 @@ class _CallScreenState extends State<CallScreen>
         }
       }
 
-      // Complete the call with rating and tip
-      await _requestService.completeCall(
-        widget.requestId,
-        result['rating'] ?? 0,
-        tip,
-      );
       // Return to previous screen
       if (mounted) {
         Navigator.of(context).pop();
@@ -561,9 +562,16 @@ class _CallScreenState extends State<CallScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _showEndCallConfirmation(context);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
         child: Stack(
           children: [
             // Options Button in top Right
@@ -699,6 +707,7 @@ class _CallScreenState extends State<CallScreen>
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -753,41 +762,6 @@ class _CallScreenState extends State<CallScreen>
     String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
     String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
     return "$twoDigitMinutes:$twoDigitSeconds";
-  }
-}
-
-class _RatingBar extends StatefulWidget {
-  final ValueChanged<int> onRatingChanged;
-
-  const _RatingBar({required this.onRatingChanged});
-
-  @override
-  State<_RatingBar> createState() => _RatingBarState();
-}
-
-class _RatingBarState extends State<_RatingBar> {
-  int _currentRating = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(5, (index) {
-        return IconButton(
-          onPressed: () {
-            setState(() {
-              _currentRating = index + 1;
-            });
-            widget.onRatingChanged(_currentRating);
-          },
-          icon: Icon(
-            index < _currentRating ? Icons.star : Icons.star_border,
-            color: Colors.amber,
-            size: 32,
-          ),
-        );
-      }),
-    );
   }
 }
 

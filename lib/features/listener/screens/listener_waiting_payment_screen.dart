@@ -27,6 +27,7 @@ class _ListenerWaitingPaymentScreenState
   final RequestService _requestService = RequestService();
   StreamSubscription<HelpRequest?>? _requestSubscription;
   late AnimationController _controller;
+  Timer? _timeoutTimer;
 
   @override
   void initState() {
@@ -36,6 +37,7 @@ class _ListenerWaitingPaymentScreenState
       duration: const Duration(seconds: 2),
     )..repeat();
     _listenForPayment();
+    _startTimeout();
   }
 
   void _listenForPayment() {
@@ -44,22 +46,38 @@ class _ListenerWaitingPaymentScreenState
         .streamRequestById(widget.requestId)
         .listen((request) {
           if (request != null && request.status == 'completed' && mounted) {
-            // Payment received! Navigate to earnings screen
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ListenerEarningsScreen(
-                  requestId: widget.requestId,
-                  callDuration: widget.callDuration,
-                ),
-              ),
-            );
+            _timeoutTimer?.cancel();
+            _navigateToEarnings();
           }
         });
   }
 
+  void _startTimeout() {
+    // If seeker doesn't pay within 2 minutes, proceed to earnings anyway
+    // The listener will still receive base pay via addEarnings
+    _timeoutTimer = Timer(const Duration(minutes: 2), () {
+      if (mounted) {
+        _requestSubscription?.cancel();
+        _navigateToEarnings();
+      }
+    });
+  }
+
+  void _navigateToEarnings() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ListenerEarningsScreen(
+          requestId: widget.requestId,
+          callDuration: widget.callDuration,
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _timeoutTimer?.cancel();
     _controller.dispose();
     _requestSubscription?.cancel();
     super.dispose();

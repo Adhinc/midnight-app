@@ -132,6 +132,11 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
   void dispose() {
     _timer?.cancel();
     _requestSubscription?.cancel();
+    // Clear Agora callbacks to prevent firing after dispose
+    _agoraService.onLog = null;
+    _agoraService.onJoinChannelSuccess = null;
+    _agoraService.onError = null;
+    _agoraService.onUserJoined = null;
     _agoraService.leaveChannel();
     _agoraService.dispose();
     _pulseController.dispose();
@@ -202,9 +207,16 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _showEndCallConfirmation(context);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
         child: Stack(
           children: [
             // Center Avatar & Info
@@ -418,6 +430,7 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
           ],
         ),
       ),
+    ),
     );
   }
 

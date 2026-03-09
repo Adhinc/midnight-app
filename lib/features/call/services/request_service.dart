@@ -8,15 +8,15 @@ class RequestService {
   // Create a new help request
   Future<String> createRequest(HelpRequest request) async {
     try {
-      // 1. Cancel any existing open requests for this seeker prevents duplicates
-      final existingOpen = await _requestsCollection
+      // 1. Cancel any existing active requests for this seeker prevents duplicates
+      final existingActive = await _requestsCollection
           .where('seekerId', isEqualTo: request.seekerId)
-          .where('status', isEqualTo: 'open')
+          .where('status', whereIn: ['open', 'pending', 'accepted'])
           .get();
 
-      if (existingOpen.docs.isNotEmpty) {
+      if (existingActive.docs.isNotEmpty) {
         final batch = FirebaseFirestore.instance.batch();
-        for (var doc in existingOpen.docs) {
+        for (var doc in existingActive.docs) {
           batch.update(doc.reference, {'status': 'cancelled'});
         }
         await batch.commit();

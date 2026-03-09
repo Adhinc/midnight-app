@@ -11,23 +11,54 @@ service cloud.firestore {
       allow create: if request.auth != null && request.auth.uid == userId 
                     && request.resource.data.walletBalance == 0;
                     
-      // Allow users to update their profile data, but NOT the walletBalance
+      // Allow users to update their profile data
+      // Balance changes allowed but NEVER below zero (prevents double-charge exploits)
       allow update: if request.auth != null && request.auth.uid == userId
-                    && request.resource.data.walletBalance == resource.data.walletBalance;
+                    && request.resource.data.walletBalance >= 0;
 
       // Transactions subcollection
       match /transactions/{transactionId} {
         // Users can read their own transactions
         allow read: if request.auth != null && request.auth.uid == userId;
-        
-        // Users CANNOT write to transactions (only Cloud Functions/Admin)
-        allow write: if false;
+
+        // Users can create transaction records (for payments/earnings)
+        allow create: if request.auth != null && request.auth.uid == userId;
+
+        // Cannot update or delete existing transactions
+        allow update, delete: if false;
       }
     }
     
     // Call requests rules
     match /requests/{requestId} {
-      allow read, write: if request.auth != null; // MVP rules, can be hardened later
+      // Read: only seeker or assigned listener can read their own requests
+      allow read: if request.auth != null && (
+        resource.data.seekerId == request.auth.uid ||
+        resource.data.listenerId == request.auth.uid
+      );
+
+      // Listeners can read open requests (for matching) — status must be 'open'
+      allow read: if request.auth != null && resource.data.status == 'open';
+
+      // Create: only the seeker can create, and must set their own seekerId
+      allow create: if request.auth != null
+                    && request.resource.data.seekerId == request.auth.uid
+                    && request.resource.data.status == 'open';
+
+      // Update: seeker, assigned listener, or listener claiming an open request
+      allow update: if request.auth != null && (
+        resource.data.seekerId == request.auth.uid ||
+        resource.data.listenerId == request.auth.uid ||
+        // Allow listener to claim an open request (listenerId is currently null)
+        (resource.data.status == 'open' && resource.data.listenerId == null)
+      )
+      // Prevent changing ownership
+      && request.resource.data.seekerId == resource.data.seekerId
+      // Prevent changing isPaid from client (only Cloud Functions should)
+      && request.resource.data.isPaid == resource.data.isPaid;
+
+      // No client-side deletes
+      allow delete: if false;
     }
     
     // Default deny

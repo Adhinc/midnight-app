@@ -45,6 +45,9 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
     "Depression",
   ];
 
+  StreamSubscription? _authSub;
+  StreamSubscription? _requestsSub;
+
   @override
   void initState() {
     super.initState();
@@ -58,7 +61,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
     }
 
     // 2. Listen for Auth Changes (covers initial load if slow, or re-login)
-    _auth.authStateChanges().listen((user) {
+    _authSub = _auth.authStateChanges().listen((user) {
       if (user != null && mounted) {
         _loadStatus(user.uid);
         _loadStats(user.uid);
@@ -68,8 +71,6 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
     // 3. Stream open requests if online
     _listenToOpenRequests();
   }
-
-  StreamSubscription? _requestsSub;
 
   void _listenToOpenRequests() {
     _requestsSub?.cancel();
@@ -113,13 +114,17 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
 
   Future<void> _loadHandle() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _handle = prefs.getString('handle') ?? "User";
-    });
+    if (mounted) {
+      setState(() {
+        _handle = prefs.getString('handle') ?? "User";
+      });
+    }
   }
 
   @override
   void dispose() {
+    _authSub?.cancel();
+    _requestsSub?.cancel();
     super.dispose();
   }
 
