@@ -403,11 +403,7 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
                     const SizedBox(width: 48),
                     // End Call
                     GestureDetector(
-                      onTap: () async {
-                        // End call - both users will exit simultaneously
-                        await _requestService.endCall(widget.requestId);
-                        // The stream listener will handle navigation to waiting screen
-                      },
+                      onTap: () => _showEndCallConfirmation(context),
                       child: _buildOptionBtn(
                         Icons.call_end,
                         "End",
@@ -421,6 +417,38 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showEndCallConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          "End Call?",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          "Are you sure you want to end this call?",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel", style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _requestService.endCall(widget.requestId);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+            child: const Text("End Call"),
+          ),
+        ],
       ),
     );
   }

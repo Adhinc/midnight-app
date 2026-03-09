@@ -32,27 +32,6 @@ class RequestService {
     }
   }
 
-  // Stream open requests (for Listeners), filtered by their explicitly selected topics
-  Stream<List<HelpRequest>> streamActiveRequests(String userId) {
-    return FirebaseFirestore.instance
-        .collection('requests')
-        .where(
-          Filter.or(
-            Filter('seekerId', isEqualTo: userId),
-            Filter('listenerId', isEqualTo: userId),
-          ),
-        )
-        .where('status', whereIn: ['pending', 'accepted', 'connected'])
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map((doc) {
-            final data = doc.data();
-            data['id'] = doc.id;
-            return HelpRequest.fromMap(data);
-          }).toList();
-        });
-  }
-
   Stream<List<HelpRequest>> streamOpenRequests(List<String> allowedTopics) {
     if (allowedTopics.isEmpty) {
       // If the listener has no topics selected, they shouldn't see any requests

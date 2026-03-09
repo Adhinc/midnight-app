@@ -118,6 +118,38 @@ class _CallScreenState extends State<CallScreen>
         });
   }
 
+  void _showEndCallConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          "End Call?",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Text(
+          "Are you sure you want to end this call?",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel", style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showTippingDialog(context);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+            child: const Text("End Call"),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showTippingDialog(BuildContext context) async {
     if (_isEndingCall) return;
     _isEndingCall = true;
@@ -639,7 +671,7 @@ class _CallScreenState extends State<CallScreen>
                   children: [
                     // End Call
                     GestureDetector(
-                      onTap: () => _showTippingDialog(context),
+                      onTap: () => _showEndCallConfirmation(context),
                       child: _buildOptionBtn(
                         Icons.call_end,
                         "End Call",

@@ -10,8 +10,6 @@ import '../../call/services/request_service.dart';
 import '../../call/models/help_request.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../wallet/services/wallet_service.dart';
-import '../../call/screens/call_screen.dart';
-
 class HomeScreen extends StatefulWidget {
   final bool isListener;
   const HomeScreen({super.key, required this.isListener});
@@ -173,87 +171,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
             const SizedBox(height: 24),
 
-            // REJOIN CALL BANNER
-            StreamBuilder<List<HelpRequest>>(
-              stream: _requestService.streamActiveRequests(
-                _auth.currentUser?.uid ?? "",
-              ),
-              builder: (context, snapshot) {
-                if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-                  final activeRequest = snapshot.data!.first;
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 24),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.green.withOpacity(0.8),
-                          Colors.teal.withOpacity(0.6),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.call, color: Colors.white),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Call in Progress",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                "You have an unfinished session.",
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        ElevatedButton(
-                          onPressed: () {
-                            if (activeRequest.status == 'open' ||
-                                activeRequest.status == 'pending' ||
-                                activeRequest.status == 'accepted') {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => MatchRadarScreen(
-                                    requestId: activeRequest.id,
-                                  ),
-                                ),
-                              );
-                            } else {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      CallScreen(requestId: activeRequest.id),
-                                ),
-                              );
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.green,
-                          ),
-                          child: const Text("Rejoin"),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
 
             const Spacer(),
 

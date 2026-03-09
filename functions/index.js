@@ -96,3 +96,6 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
         return res.status(500).send("Internal Server Error");
     }
 });
+
+// TODO: Deploy cleanupStaleCalls scheduled function before production
+// See DEV_NOTES.md for implementation details
