@@ -44,7 +44,7 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
 
     if (!userId) {
         console.error("Missing userId in payment notes", paymentId);
-        return res.status(200).send("No userId found"); // Return 200 so Razorpay doesn't retry
+        return res.status(400).send("Missing userId in payment notes");
     }
 
     try {

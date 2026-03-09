@@ -119,8 +119,13 @@ class WalletService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Callback for UI to listen to payment errors
+  void Function(String message)? onPaymentError;
+
   void _handlePaymentError(PaymentFailureResponse response) {
-    // Payment error handled by Razorpay UI
+    final message = response.message ?? "Payment failed. Please try again.";
+    debugPrint('Razorpay payment error: $message');
+    onPaymentError?.call(message);
   }
 
   void _handleExternalWallet(ExternalWalletResponse response) {

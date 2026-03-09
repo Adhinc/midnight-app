@@ -19,6 +19,27 @@ class _WalletScreenState extends State<WalletScreen> {
   final WalletService _walletService = WalletService();
 
   @override
+  void initState() {
+    super.initState();
+    _walletService.onPaymentError = (message) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    };
+  }
+
+  @override
+  void dispose() {
+    _walletService.onPaymentError = null;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: MidnightTheme.bgColor,
