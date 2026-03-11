@@ -6,10 +6,43 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
+// Simple in-memory rate limiter for Cloud Functions
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // max 10 requests per IP per minute
+
+function isRateLimited(ip) {
+    const now = Date.now();
+    const entry = rateLimitMap.get(ip);
+
+    if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+        rateLimitMap.set(ip, { windowStart: now, count: 1 });
+        return false;
+    }
+
+    entry.count++;
+    if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
+        return true;
+    }
+    return false;
+}
+
 /**
  * Razorpay Webhook to handle payment.captured event securely.
  */
 exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
+    // Only allow POST
+    if (req.method !== "POST") {
+        return res.status(405).send("Method Not Allowed");
+    }
+
+    // Rate limiting
+    const clientIp = req.headers["x-forwarded-for"] || req.ip;
+    if (isRateLimited(clientIp)) {
+        console.warn("Rate limited:", clientIp);
+        return res.status(429).send("Too Many Requests");
+    }
+
     const secret = functions.config().razorpay.webhook_secret;
     const signature = req.headers["x-razorpay-signature"];
 
@@ -39,11 +72,17 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
     const amountPaise = payment.amount; // In paise
     const amountINR = amountPaise / 100;
 
+    // Validate amount is positive and reasonable
+    if (!Number.isFinite(amountINR) || amountINR <= 0 || amountINR > 100000) {
+        console.error("Invalid payment amount", amountINR);
+        return res.status(400).send("Invalid payment amount");
+    }
+
     // We expect 'userId' to be passed in the notes field from the client
     const userId = payment.notes ? payment.notes.userId : null;
 
-    if (!userId) {
-        console.error("Missing userId in payment notes", paymentId);
+    if (!userId || typeof userId !== "string" || userId.length > 128) {
+        console.error("Missing or invalid userId in payment notes", paymentId);
         return res.status(400).send("Missing userId in payment notes");
     }
 

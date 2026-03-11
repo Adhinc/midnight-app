@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../../../core/theme.dart';
+import '../../../core/validators.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -14,6 +15,7 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _bioController = TextEditingController();
   String? _profilePicUrl;
@@ -120,6 +122,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _saveProfile() async {
+    if (!_formKey.currentState!.validate()) return;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     setState(() => _isSaving = true);
@@ -200,7 +203,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             )
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              child: Column(
+              child: Form(
+                key: _formKey,
+                child: Column(
                 children: [
                   GestureDetector(
                     onTap: _pickAndUploadImage,
@@ -244,10 +249,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  _buildTextField("Username / Handle", _nameController),
+                  _buildTextField("Username / Handle", _nameController, maxLength: 20, validator: Validators.handle),
                   const SizedBox(height: 24),
-                  _buildTextField("Bio", _bioController, maxLines: 4),
+                  _buildTextField("Bio", _bioController, maxLines: 4, maxLength: 200, validator: Validators.bio),
                 ],
+              ),
               ),
             ),
     );
@@ -257,19 +263,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     String label,
     TextEditingController controller, {
     int maxLines = 1,
+    int? maxLength,
+    String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(color: Colors.grey, fontSize: 14)),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: controller,
           maxLines: maxLines,
+          maxLength: maxLength,
+          validator: validator,
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             filled: true,
             fillColor: MidnightTheme.surfaceColor,
+            counterStyle: const TextStyle(color: Colors.grey),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,

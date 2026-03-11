@@ -124,10 +124,19 @@ class AccountSettingsScreen extends StatelessWidget {
                           return;
                         }
 
-                        if (newPass.length < 6) {
+                        if (newPass.length < 8) {
                           setState(
                             () => errorMessage =
-                                "New password must be at least 6 characters",
+                                "Password must be at least 8 characters",
+                          );
+                          return;
+                        }
+
+                        if (!newPass.contains(RegExp(r'[A-Z]')) ||
+                            !newPass.contains(RegExp(r'[0-9]'))) {
+                          setState(
+                            () => errorMessage =
+                                "Must contain an uppercase letter and a number",
                           );
                           return;
                         }

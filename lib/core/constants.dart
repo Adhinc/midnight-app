@@ -1,9 +1,8 @@
-class AppConstants {
-  // TODO: Replace with your actual Agora App ID from console.agora.io
-  static const String agoraAppId = "444f263faabb4ced9a87a5e44abd881e";
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-  // TODO: Replace with your Razorpay Test Key ID from dashboard.razorpay.com
-  static const String razorpayKey = "rzp_test_1DP5mmOlF5G5ag";
+class AppConstants {
+  static String get agoraAppId => dotenv.env['AGORA_APP_ID'] ?? '';
+  static String get razorpayKey => dotenv.env['RAZORPAY_KEY'] ?? '';
 
   // Session pricing (in INR)
   static const int sessionBasePay = 30; // Amount listener earns per session
