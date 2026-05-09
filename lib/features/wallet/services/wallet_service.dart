@@ -146,23 +146,25 @@ class WalletService extends ChangeNotifier {
     try {
       bool actuallyPaid = false;
       await _firestore.runTransaction((transaction) async {
-        // 1. Check if already paid
+        // ALL READS MUST HAPPEN BEFORE ANY WRITES
         final requestRef = _firestore.collection('requests').doc(requestId);
+        final userRef = _firestore.collection('users').doc(user.uid);
+        
         final requestDoc = await transaction.get(requestRef);
+        final userDoc = await transaction.get(userRef);
 
+        // 1. Check if already paid
         if (requestDoc.exists) {
           final isPaid = requestDoc.data()?['isPaid'] ?? false;
           if (isPaid) {
             debugPrint('addEarnings: Already paid for request $requestId');
             return; // Already paid, abort transaction
           }
-          // Mark as paid IMMEDIATELY in the same transaction
+          // Mark as paid
           transaction.update(requestRef, {'isPaid': true});
         }
 
         // 2. Update User Balance
-        final userRef = _firestore.collection('users').doc(user.uid);
-        final userDoc = await transaction.get(userRef);
 
         if (!userDoc.exists) {
           transaction.set(userRef, {'walletBalance': amount});
