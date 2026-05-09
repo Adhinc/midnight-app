@@ -54,7 +54,7 @@ class AgoraService {
         onLog!("AgoraService: Engine created. Initializing...");
       }
       await _engine!.initialize(
-        const RtcEngineContext(
+        RtcEngineContext(
           appId: AppConstants.agoraAppId,
           channelProfile: ChannelProfileType.channelProfileCommunication,
         ),
