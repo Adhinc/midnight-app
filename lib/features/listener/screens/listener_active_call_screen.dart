@@ -86,6 +86,20 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
         // Seeker joined
       };
 
+      _agoraService.onUserOffline = (uid) {
+        // Seeker left the call
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("The other person has left the call."),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          // End the call from listener side
+          _requestService.endCall(widget.requestId);
+        }
+      };
+
       // 4. Join Channel
       // Use a random int ID for now, or hash the user ID
       final uid = DateTime.now().millisecondsSinceEpoch % 1000000;
@@ -137,6 +151,7 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
     _agoraService.onJoinChannelSuccess = null;
     _agoraService.onError = null;
     _agoraService.onUserJoined = null;
+    _agoraService.onUserOffline = null;
     _agoraService.leaveChannel();
     _agoraService.dispose();
     _pulseController.dispose();

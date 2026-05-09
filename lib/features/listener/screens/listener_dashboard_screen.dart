@@ -169,6 +169,12 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isListener', false);
 
+    // Set listener offline in Firestore
+    final user = _auth.currentUser;
+    if (user != null) {
+      _userService.updateListenerStatus(user.uid, false);
+    }
+
     if (mounted) {
       Navigator.pushAndRemoveUntil(
         context,
@@ -393,7 +399,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
                           // Prevent receiving new requests while busy
                           _toggleStatus(false);
 
-                          Navigator.push(
+                          await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) => ListenerIncomingCallScreen(
@@ -404,6 +410,11 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
                               ),
                             ),
                           );
+
+                          // Auto go back online when returning from call
+                          if (mounted) {
+                            _toggleStatus(true);
+                          }
                         }
                       } catch (e) {
                         if (mounted) {

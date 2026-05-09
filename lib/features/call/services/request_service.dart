@@ -188,6 +188,28 @@ class RequestService {
     }
   }
 
+  // Release a claimed request back to 'open' (listener declined or timed out)
+  Future<void> releaseRequest(String requestId) async {
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final docRef = _requestsCollection.doc(requestId);
+        final snapshot = await transaction.get(docRef);
+        final data = snapshot.data() as Map<String, dynamic>;
+
+        // Only release if pending (claimed but not yet accepted)
+        if (data['status'] == 'pending') {
+          transaction.update(docRef, {
+            'status': 'open',
+            'listenerId': FieldValue.delete(),
+            'listenerHandle': FieldValue.delete(),
+          });
+        }
+      });
+    } catch (e) {
+      throw Exception("Failed to release request: $e");
+    }
+  }
+
   // Cancel a request
   Future<void> cancelRequest(String requestId) async {
     try {

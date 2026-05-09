@@ -11,6 +11,7 @@ import '../screens/session_history_screen.dart';
 import '../screens/help_support_screen.dart';
 import '../../home/screens/home_screen.dart';
 import '../../listener/screens/listener_dashboard_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -132,6 +133,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 // Toggle the state
                 final newStatus = !_isListener;
                 await prefs.setBool('isListener', newStatus);
+
+                // Update role in Firestore
+                final user = FirebaseAuth.instance.currentUser;
+                if (user != null) {
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .update({'role': newStatus ? 'listener' : 'seeker'});
+                }
 
                 if (!mounted) return;
 

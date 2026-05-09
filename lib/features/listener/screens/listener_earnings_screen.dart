@@ -4,6 +4,7 @@ import '../../../core/constants.dart';
 import '../../wallet/services/wallet_service.dart';
 import '../../call/services/request_service.dart';
 import '../../call/models/help_request.dart';
+import '../../home/screens/home_screen.dart';
 
 class ListenerEarningsScreen extends StatefulWidget {
   final String requestId;
@@ -197,8 +198,14 @@ class _ListenerEarningsScreenState extends State<ListenerEarningsScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    // Pop back to Dashboard
-                    Navigator.pop(context);
+                    // Navigate back to Dashboard cleanly
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const HomeScreen(isListener: true),
+                      ),
+                      (route) => false,
+                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,

@@ -78,6 +78,19 @@ class _CallScreenState extends State<CallScreen>
       // Listener joined or other peer
     };
 
+    _agoraService.onUserOffline = (uid) {
+      // Other user left the call
+      if (mounted && !_isEndingCall) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("The other person has left the call."),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        _showTippingDialog(context);
+      }
+    };
+
     // Use a random int ID for now, or hash the user ID
     final uid = DateTime.now().millisecondsSinceEpoch % 1000000;
     await _agoraService.joinChannel(channelId: widget.requestId, uid: uid);
@@ -93,6 +106,7 @@ class _CallScreenState extends State<CallScreen>
     _agoraService.onJoinChannelSuccess = null;
     _agoraService.onError = null;
     _agoraService.onUserJoined = null;
+    _agoraService.onUserOffline = null;
     _agoraService.dispose();
     super.dispose();
   }

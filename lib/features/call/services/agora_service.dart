@@ -162,11 +162,7 @@ class AgoraService {
   }
 
   Future<void> muteLocalAudio(bool mute) async {
-    if (mute) {
-      await _engine?.disableAudio();
-    } else {
-      await _engine?.enableAudio();
-    }
+    await _engine?.muteLocalAudioStream(mute);
   }
 
   Future<void> leaveChannel() async {
@@ -174,7 +170,10 @@ class AgoraService {
   }
 
   Future<void> dispose() async {
+    await _engine?.leaveChannel();
     await _engine?.release();
+    _engine = null;
     _isInitialized = false;
+    currentUid = null;
   }
 }

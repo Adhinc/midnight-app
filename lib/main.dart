@@ -5,6 +5,7 @@ import 'core/theme.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/home/screens/home_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -17,8 +18,15 @@ void main() async {
   final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
   final isListener = prefs.getBool('isListener') ?? false;
 
+  // Validate that Firebase Auth session is still active
+  final hasValidAuth = isLoggedIn && FirebaseAuth.instance.currentUser != null;
+  if (isLoggedIn && !hasValidAuth) {
+    // Session expired or user deleted — clear stale local data
+    await prefs.clear();
+  }
+
   runApp(
-    MidnightApp(isLoggedIn: isLoggedIn, isListener: isListener),
+    MidnightApp(isLoggedIn: hasValidAuth, isListener: isListener),
   );
 }
 

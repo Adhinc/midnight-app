@@ -243,14 +243,31 @@ class AccountSettingsScreen extends StatelessWidget {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final uid = user.uid;
+
+        // Cancel all active requests for this user (as seeker or listener)
+        final firestore = FirebaseFirestore.instance;
+        final seekerRequests = await firestore
+            .collection('requests')
+            .where('seekerId', isEqualTo: uid)
+            .where('status', whereIn: ['open', 'pending', 'accepted', 'connected'])
+            .get();
+        final listenerRequests = await firestore
+            .collection('requests')
+            .where('listenerId', isEqualTo: uid)
+            .where('status', whereIn: ['pending', 'accepted', 'connected'])
+            .get();
+        final batch = firestore.batch();
+        for (var doc in [...seekerRequests.docs, ...listenerRequests.docs]) {
+          batch.update(doc.reference, {'status': 'cancelled'});
+        }
+        if (seekerRequests.docs.isNotEmpty || listenerRequests.docs.isNotEmpty) {
+          await batch.commit();
+        }
+
         // Delete Firebase Auth account FIRST (more likely to fail if re-auth needed)
-        // If this fails, Firestore data is preserved — no data loss
         await user.delete();
         // Only delete Firestore data after auth deletion succeeds
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .delete();
+        await firestore.collection('users').doc(uid).delete();
       }
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();

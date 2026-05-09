@@ -29,12 +29,31 @@ class _ListenerIncomingCallScreenState extends State<ListenerIncomingCallScreen>
   final RequestService _requestService = RequestService();
   StreamSubscription<HelpRequest?>? _requestSubscription;
   bool _hasAccepted = false;
+  Timer? _declineTimer;
+  int _secondsRemaining = 30;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
     _listenForConnection();
+    _startDeclineCountdown();
+  }
+
+  void _startDeclineCountdown() {
+    _declineTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _secondsRemaining--;
+      });
+      if (_secondsRemaining <= 0) {
+        timer.cancel();
+        _declineRequest();
+      }
+    });
   }
 
   void _listenForConnection() {
@@ -58,8 +77,20 @@ class _ListenerIncomingCallScreenState extends State<ListenerIncomingCallScreen>
     });
   }
 
+  void _declineRequest() async {
+    _declineTimer?.cancel();
+    try {
+      // Release the request back to 'open' so other listeners can claim it
+      await _requestService.releaseRequest(widget.requestId);
+    } catch (_) {}
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   void dispose() {
+    _declineTimer?.cancel();
     _controller.dispose();
     _requestSubscription?.cancel();
     super.dispose();
@@ -157,13 +188,13 @@ class _ListenerIncomingCallScreenState extends State<ListenerIncomingCallScreen>
                     const SizedBox(height: 24),
 
                     // Timer
-                    const Text(
-                      "Waiting for 15s...",
-                      style: TextStyle(fontSize: 14, color: Colors.white54),
+                    Text(
+                      "Auto-decline in ${_secondsRemaining}s",
+                      style: const TextStyle(fontSize: 14, color: Colors.white54),
                     ),
                     const SizedBox(height: 8),
                     LinearProgressIndicator(
-                      value: 0.6,
+                      value: _secondsRemaining / 30,
                       backgroundColor: Colors.white10,
                       valueColor: AlwaysStoppedAnimation<Color>(MidnightTheme.primaryColor),
                     ),
@@ -178,7 +209,7 @@ class _ListenerIncomingCallScreenState extends State<ListenerIncomingCallScreen>
                 children: [
                   // Decline Button
                   GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
+                    onTap: _declineRequest,
                     child: Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
@@ -202,6 +233,7 @@ class _ListenerIncomingCallScreenState extends State<ListenerIncomingCallScreen>
                           // Accept the request (sets status to 'accepted')
                           try {
                             await _requestService.acceptRequest(widget.requestId);
+                            _declineTimer?.cancel();
                             setState(() {
                               _hasAccepted = true;
                             });
