@@ -138,9 +138,13 @@ class WalletService extends ChangeNotifier {
     String requestId,
   ) async {
     final user = _auth.currentUser;
-    if (user == null) return false;
+    if (user == null) {
+      debugPrint('addEarnings FAILED: user is null');
+      return false;
+    }
 
     try {
+      bool actuallyPaid = false;
       await _firestore.runTransaction((transaction) async {
         // 1. Check if already paid
         final requestRef = _firestore.collection('requests').doc(requestId);
@@ -149,6 +153,7 @@ class WalletService extends ChangeNotifier {
         if (requestDoc.exists) {
           final isPaid = requestDoc.data()?['isPaid'] ?? false;
           if (isPaid) {
+            debugPrint('addEarnings: Already paid for request $requestId');
             return; // Already paid, abort transaction
           }
           // Mark as paid IMMEDIATELY in the same transaction
@@ -180,10 +185,13 @@ class WalletService extends ChangeNotifier {
           'status': 'success',
           'requestId': requestId,
         });
+
+        actuallyPaid = true;
       });
-      return true;
+      debugPrint('addEarnings result: actuallyPaid=$actuallyPaid, amount=$amount');
+      return actuallyPaid;
     } catch (e) {
-      debugPrint('Error adding earnings: $e');
+      debugPrint('addEarnings ERROR: $e');
       return false;
     }
   }

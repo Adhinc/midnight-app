@@ -115,7 +115,18 @@ class AgoraService {
     );
 
     await _engine!.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
-    await _engine!.enableAudio();
+    await _engine!.setAudioProfile(
+      profile: AudioProfileType.audioProfileDefault,
+      scenario: AudioScenarioType.audioScenarioChatroom,
+    );
+    // NOTE: Do NOT call enableAudio/enableLocalAudio here.
+    // On web, getUserMedia requires HTTPS or localhost + user gesture.
+    // These calls are deferred to joinChannel() which runs after user action.
+    if (!kIsWeb) {
+      await _engine!.enableAudio();
+      await _engine!.enableLocalAudio(true);
+      await _engine!.muteLocalAudioStream(false);
+    }
 
     _isInitialized = true;
     if (onLog != null) onLog!("AgoraService: Engine initialized successfully");
@@ -129,9 +140,15 @@ class AgoraService {
 
     if (!_isInitialized) await initialize();
 
-    // For testing we use a null token (requires App Config to allow App ID only auth)
-    // In production, you should use a token server
     try {
+      // On web, enable audio here (after user gesture) to avoid getUserMedia block
+      if (kIsWeb) {
+        if (onLog != null) onLog!("AgoraService: Enabling audio (web)...");
+        await _engine!.enableAudio();
+        await _engine!.enableLocalAudio(true);
+        await _engine!.muteLocalAudioStream(false);
+      }
+
       await _engine!.joinChannel(
         token: '', // Use null for App ID only mode
         channelId: channelId,
@@ -144,14 +161,14 @@ class AgoraService {
         ),
       );
 
-      // Skip preview for web - it's not supported -> Wait, let's TRY it to see if it triggers permissions
-      // await _engine!.startPreview(); // DISABLED: We only want Audio, don't ask for Camera!
-
       if (onLog != null) {
         onLog!(
           "✅ joinChannel sent! App ID: ${AppConstants.agoraAppId.substring(0, 8)}...",
         );
       }
+
+      // Ensure remote audio is not muted
+      await _engine!.muteAllRemoteAudioStreams(false);
 
       // Give it a moment then check connection state
       await Future.delayed(const Duration(milliseconds: 500));

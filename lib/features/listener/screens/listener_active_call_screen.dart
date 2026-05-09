@@ -296,7 +296,28 @@ class _ListenerActiveCallScreenState extends State<ListenerActiveCallScreen>
                       letterSpacing: 2.0,
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+
+                  // Debug log (remove after testing)
+                  if (_debugLog.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 24),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _debugLog,
+                        style: const TextStyle(
+                          color: Colors.yellow,
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  const SizedBox(height: 16),
 
                   // Prompt Overlay
                   GestureDetector(

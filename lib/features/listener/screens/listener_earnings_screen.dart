@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
 import '../../../core/constants.dart';
@@ -25,26 +26,68 @@ class _ListenerEarningsScreenState extends State<ListenerEarningsScreen> {
   HelpRequest? _request;
   bool _isLoading = true;
   bool _hasAddedEarnings = false;
+  StreamSubscription<HelpRequest?>? _requestSubscription;
+  Timer? _fallbackTimer;
 
   @override
   void initState() {
     super.initState();
-    _loadRequestData();
+    _waitForCompletedRequest();
   }
 
-  Future<void> _loadRequestData() async {
-    final request = await _requestService.getRequestById(widget.requestId);
-    if (mounted) {
+  @override
+  void dispose() {
+    _requestSubscription?.cancel();
+    _fallbackTimer?.cancel();
+    super.dispose();
+  }
+
+  void _waitForCompletedRequest() {
+    // Stream the request to wait for seeker's payment to commit (status = 'completed')
+    _requestSubscription = _requestService
+        .streamRequestById(widget.requestId)
+        .listen((request) {
+      if (request != null && mounted) {
+        setState(() {
+          _request = request;
+          _isLoading = false;
+        });
+
+        // Only credit earnings once the request is fully completed (seeker paid)
+        if (request.status == 'completed' && !_hasAddedEarnings) {
+          _hasAddedEarnings = true;
+          _requestSubscription?.cancel();
+          _fallbackTimer?.cancel();
+          _addToWallet(request);
+        }
+      }
+    });
+
+    // Fallback: if status never becomes 'completed' within 30s, credit base pay anyway
+    _fallbackTimer = Timer(const Duration(seconds: 30), () {
+      if (!_hasAddedEarnings && mounted) {
+        _hasAddedEarnings = true;
+        _requestSubscription?.cancel();
+        _creditBasePay();
+      }
+    });
+  }
+
+  Future<void> _creditBasePay() async {
+    // Fallback: credit only base pay if seeker never completed payment
+    final walletService = WalletService();
+    final basePay = AppConstants.sessionBasePay.toDouble();
+    final request = _request ?? await _requestService.getRequestById(widget.requestId);
+    if (request != null) {
       setState(() {
         _request = request;
         _isLoading = false;
       });
-      if (request != null && !_hasAddedEarnings) {
-        _hasAddedEarnings = true;
-        _addToWallet(request);
-      }
+      await walletService.addEarnings(basePay, "Session Earnings (Base)", request.id);
     }
   }
+
+  String _earningsStatus = '';
 
   Future<void> _addToWallet(HelpRequest request) async {
     final walletService = WalletService();
@@ -52,19 +95,27 @@ class _ListenerEarningsScreenState extends State<ListenerEarningsScreen> {
     final tipAmount = (request.tip ?? 0).toDouble();
     final totalAmount = basePay + tipAmount;
 
-    // Single call with total amount to avoid isPaid flag blocking the tip
+    if (mounted) {
+      setState(() => _earningsStatus = 'Adding ₹${totalAmount.toInt()} to wallet...');
+    }
+
     final description = tipAmount > 0
         ? "Session Earnings (₹${basePay.toInt()} base + ₹${tipAmount.toInt()} tip)"
         : "Session Earnings (Base)";
 
     final success = await walletService.addEarnings(totalAmount, description, request.id);
-    if (!success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Failed to add earnings. Please contact support."),
-          backgroundColor: Colors.red,
-        ),
-      );
+    if (mounted) {
+      if (success) {
+        setState(() => _earningsStatus = '✅ ₹${totalAmount.toInt()} added to wallet');
+      } else {
+        setState(() => _earningsStatus = '❌ Failed to add earnings');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Failed to add earnings. Please contact support."),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -149,6 +200,23 @@ class _ListenerEarningsScreenState extends State<ListenerEarningsScreen> {
                   ],
                 ),
               ),
+
+              // Earnings status (debug)
+              if (_earningsStatus.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    _earningsStatus,
+                    style: TextStyle(
+                      color: _earningsStatus.contains('✅')
+                          ? const Color(0xFF00E676)
+                          : _earningsStatus.contains('❌')
+                              ? Colors.red
+                              : Colors.yellow,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
 
               const SizedBox(height: 32),
 
