@@ -140,6 +140,11 @@ class AgoraService {
 
     if (!_isInitialized) await initialize();
 
+    if (_engine == null) {
+      if (onLog != null) onLog!("⚠️ DEMO MODE: No Agora App ID. Voice disabled.");
+      return;
+    }
+
     try {
       // On web, enable audio here (after user gesture) to avoid getUserMedia block
       if (kIsWeb) {
