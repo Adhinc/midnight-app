@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme.dart';
+import '../../../core/constants.dart';
 import '../../call/services/request_service.dart';
 import '../../call/models/help_request.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
-class SessionHistoryScreen extends StatefulWidget {
-  const SessionHistoryScreen({super.key});
+class ListenerSessionHistoryScreen extends StatefulWidget {
+  const ListenerSessionHistoryScreen({super.key});
 
   @override
-  State<SessionHistoryScreen> createState() => _SessionHistoryScreenState();
+  State<ListenerSessionHistoryScreen> createState() => _ListenerSessionHistoryScreenState();
 }
 
-class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
+class _ListenerSessionHistoryScreenState extends State<ListenerSessionHistoryScreen> {
   final RequestService _requestService = RequestService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   List<HelpRequest> _sessions = [];
@@ -27,12 +28,19 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   Future<void> _loadSessions() async {
     final user = _auth.currentUser;
     if (user != null) {
-      final sessions = await _requestService.getCompletedRequestsForListener(user.uid);
-      if (mounted) {
-        setState(() {
-          _sessions = sessions;
-          _isLoading = false;
-        });
+      try {
+        final sessions = await _requestService.getCompletedRequestsForListener(user.uid);
+        if (mounted) {
+          setState(() {
+            _sessions = sessions;
+            _isLoading = false;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to load sessions")));
+        }
       }
     } else {
       if (mounted) setState(() => _isLoading = false);
@@ -44,27 +52,33 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     return Scaffold(
       backgroundColor: MidnightTheme.bgColor,
       appBar: AppBar(
-        title: const Text("Session History", style: TextStyle(color: Colors.white)),
+        title: const Text("Earnings History", style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: _isLoading 
-          ? const Center(child: CircularProgressIndicator(color: MidnightTheme.primaryColor))
-          : _sessions.isEmpty 
-              ? Center(child: Text("No completed sessions yet", style: TextStyle(color: Colors.white.withOpacity(0.5))))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _sessions.length,
-                  itemBuilder: (context, index) {
-                    return _buildSessionCard(context, _sessions[index]);
-                  },
-                ),
+      body: RefreshIndicator(
+        onRefresh: _loadSessions,
+        color: MidnightTheme.primaryColor,
+        child: _isLoading 
+            ? const Center(child: CircularProgressIndicator(color: MidnightTheme.primaryColor))
+            : _sessions.isEmpty 
+                ? ListView(children: [SizedBox(height: MediaQuery.of(context).size.height * 0.4, child: Center(child: Text("No completed sessions yet", style: TextStyle(color: Colors.white.withOpacity(0.5))))),])
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _sessions.length,
+                    itemBuilder: (context, index) {
+                      return _buildSessionCard(context, _sessions[index]);
+                    },
+                  ),
+      ),
     );
   }
 
   Widget _buildSessionCard(BuildContext context, HelpRequest session) {
-    final pay = 30 + (session.tip ?? 0);
+    final pay = AppConstants.sessionBasePay + (session.tip ?? 0);
+    final shortId = session.id.isNotEmpty ? session.id.substring(0, min(5, session.id.length)).toUpperCase() : "UNK";
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -80,7 +94,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "Session #${session.id.substring(0, 5).toUpperCase()}", // Short ID
+                "Session #$shortId",
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
               ),
               Container(
@@ -89,9 +103,9 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
                   color: MidnightTheme.primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
+                child: const Text(
                   "Completed",
-                  style: const TextStyle(color: MidnightTheme.primaryColor, fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: MidnightTheme.primaryColor, fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ),
             ],
@@ -101,7 +115,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             children: [
               const Icon(Icons.person, color: Colors.grey, size: 16),
               const SizedBox(width: 8),
-              Text(session.seekerHandle, style: const TextStyle(color: Colors.grey)),
+              Text("Seeker (Anonymous)", style: const TextStyle(color: Colors.grey)),
             ],
           ),
           const SizedBox(height: 8),
@@ -122,11 +136,13 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text("Earnings", style: TextStyle(color: Colors.white70)),
-               Text("₹$pay.00", style: const TextStyle(color: MidnightTheme.secondaryColor, fontWeight: FontWeight.bold)),
+               Text("₹${pay.toStringAsFixed(2)}", style: const TextStyle(color: MidnightTheme.secondaryColor, fontWeight: FontWeight.bold)),
             ],
           ),
         ],
       ),
     );
   }
+
+  int min(int a, int b) => a < b ? a : b;
 }

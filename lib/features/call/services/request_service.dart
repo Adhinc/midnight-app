@@ -1,3 +1,7 @@
+import '../../wallet/services/wallet_service.dart';
+import '../../../core/constants.dart';
+import 'dart:async';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/help_request.dart';
 
@@ -20,6 +24,7 @@ class RequestService {
           batch.update(doc.reference, {'status': 'cancelled'});
         }
         await batch.commit();
+        await WalletService().releaseHeldFunds(AppConstants.sessionCost.toDouble());
       }
 
       // 2. Create the new request
@@ -42,11 +47,10 @@ class RequestService {
     }
 
     // Firestore 'whereIn' supports up to 10 items.
-    // Assuming available topics are less than 10.
     return _requestsCollection
         .where('status', isEqualTo: 'open')
-        .where('topic', whereIn: allowedTopics)
-        .where('language', whereIn: allowedLanguages)
+        .where('topic', whereIn: allowedTopics.take(10).toList())
+        .where('language', whereIn: allowedLanguages.take(10).toList())
         .snapshots()
         .map((snapshot) {
           return snapshot.docs
@@ -105,6 +109,7 @@ class RequestService {
           'status': 'pending',
           'listenerId': listenerId,
           'listenerHandle': listenerHandle,
+          'lastActive': DateTime.now().toIso8601String(),
         });
       });
     } catch (e) {
@@ -163,6 +168,14 @@ class RequestService {
         if (data['status'] == 'connected') {
           transaction.update(docRef, {'status': 'ending'});
         }
+        
+        // Ensure wallet balance math is safe
+        final userRef = FirebaseFirestore.instance.collection('users').doc(data['seekerId']);
+        final userDoc = await transaction.get(userRef);
+        if (userDoc.exists) {
+          final held = (userDoc.data()?['heldBalance'] ?? 0.0).toDouble();
+          transaction.update(userRef, {'heldBalance': max(0.0, held - AppConstants.sessionCost.toDouble())});
+        }
       });
     } catch (e) {
       throw Exception("Failed to end call: $e");
@@ -181,7 +194,7 @@ class RequestService {
         if (data['status'] == 'ending') {
           transaction.update(docRef, {
             'status': 'completed',
-            'rating': rating > 0 ? rating : null, // Fix #7: Only store if > 0
+            'rating': rating > 0 ? rating : null,
             'tip': tip,
             'completedAt': DateTime.now().toIso8601String(),
           });
@@ -255,6 +268,37 @@ class RequestService {
         'sessions': totalSessions,
         'rating': double.parse(averageRating.toStringAsFixed(1)),
       };
+  Future<Map<String, dynamic>> getListenerStats(String listenerId) async {
+    try {
+      final querySnapshot = await _requestsCollection
+          .where('listenerId', isEqualTo: listenerId)
+          .where('status', isEqualTo: 'completed')
+          .get();
+
+      final totalSessions = querySnapshot.docs.length;
+      if (totalSessions == 0) {
+        return {'sessions': 0, 'rating': 0.0};
+      }
+
+      double totalRating = 0;
+      int ratedSessions = 0;
+
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        if (data.containsKey('rating') && data['rating'] != null) {
+          totalRating += (data['rating'] as num).toDouble();
+          ratedSessions++;
+        }
+      }
+
+      final averageRating = ratedSessions > 0
+          ? totalRating / ratedSessions
+          : 0.0;
+
+      return {
+        'sessions': totalSessions,
+        'rating': double.parse(averageRating.toStringAsFixed(1)),
+      };
     } catch (e) {
       return {'sessions': 0, 'rating': 0.0};
     }
@@ -262,38 +306,29 @@ class RequestService {
 
   // Get completed requests for a listener (ordered by timestamp descending)
   Future<List<HelpRequest>> getCompletedRequestsForListener(
-    String listenerId,
-  ) async {
+    String listenerId, {
+    bool onlyRated = false,
+  }) async {
     try {
-      final querySnapshot = await _requestsCollection
+      var query = _requestsCollection
           .where('listenerId', isEqualTo: listenerId)
-          .where('status', isEqualTo: 'completed')
-          .orderBy('timestamp', descending: true)
-          .get();
+          .where('status', isEqualTo: 'completed');
 
-      return querySnapshot.docs
+      if (onlyRated) {
+        query = query.where('rating', isGreaterThan: 0);
+      }
+
+      final querySnapshot = await query.get();
+
+      final requests = querySnapshot.docs
           .map((doc) => HelpRequest.fromMap(doc.data() as Map<String, dynamic>))
           .toList();
+
+      // Sort client-side to avoid needing complex composite indexes for every variation
+      requests.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      return requests;
     } catch (e) {
-      // Index missing, try client-side sorting fallback
-      // If index is missing, try client-side sorting (less efficient but works without index deployment immediately)
-      try {
-        final querySnapshot = await _requestsCollection
-            .where('listenerId', isEqualTo: listenerId)
-            .where('status', isEqualTo: 'completed')
-            .get();
-
-        final requests = querySnapshot.docs
-            .map(
-              (doc) => HelpRequest.fromMap(doc.data() as Map<String, dynamic>),
-            )
-            .toList();
-
-        requests.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        return requests;
-      } catch (e2) {
-        return [];
-      }
+      return [];
     }
   }
 }

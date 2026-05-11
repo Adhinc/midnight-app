@@ -1,11 +1,12 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class HelpRequest {
   final String id;
   final String seekerId;
   final String seekerHandle;
   final String topic;
   final String mood;
-  final String
-  status; // 'open', 'pending', 'accepted', 'connected', 'ending', 'completed', 'cancelled'
+  final String status; // 'open', 'pending', 'accepted', 'connected', 'ending', 'completed', 'cancelled'
   final DateTime timestamp;
   final String language;
   final String? listenerId;
@@ -64,18 +65,20 @@ class HelpRequest {
       topic: map['topic'] ?? '',
       mood: map['mood'] ?? '',
       status: map['status'] ?? 'open',
-      timestamp: DateTime.tryParse(map['timestamp'] ?? '') ?? DateTime.now(),
+      timestamp: map['timestamp'] is String 
+          ? (DateTime.tryParse(map['timestamp']) ?? DateTime.now())
+          : (map['timestamp'] as dynamic)?.toDate() ?? DateTime.now(),
       language: map['language'] ?? 'English',
       listenerId: map['listenerId'],
       listenerHandle: map['listenerHandle'],
       rating: map['rating'],
       tip: map['tip'],
-      connectedAt: map['connectedAt'] != null
+      connectedAt: map['connectedAt'] is String
           ? DateTime.tryParse(map['connectedAt'])
-          : null,
-      lastActive: map['lastActive'] != null
+          : (map['connectedAt'] as dynamic)?.toDate(),
+      lastActive: map['lastActive'] is String
           ? DateTime.tryParse(map['lastActive'])
-          : null,
+          : (map['lastActive'] as dynamic)?.toDate(),
       isPaid: map['isPaid'] ?? false,
     );
   }

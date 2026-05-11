@@ -27,14 +27,13 @@ class _RatingHistoryScreenState extends State<RatingHistoryScreen> {
   }
 
   Future<void> _loadData() async {
+    setState(() => _isLoading = true);
     final user = _auth.currentUser;
     if (user != null) {
       final stats = await _requestService.getListenerStats(user.uid);
-      final sessionRequests = await _requestService.getCompletedRequestsForListener(user.uid);
+      // Fetch ONLY rated sessions from server
+      final reviews = await _requestService.getCompletedRequestsForListener(user.uid, onlyRated: true);
       
-      // Filter sessions that have a rating
-      final reviews = sessionRequests.where((r) => r.rating != null && r.rating! > 0).toList();
-
       if (mounted) {
         setState(() {
           _stats = stats;
@@ -57,34 +56,39 @@ class _RatingHistoryScreenState extends State<RatingHistoryScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: MidnightTheme.primaryColor))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  _buildOverallRating(),
-                  const SizedBox(height: 24),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text("Recent Ratings", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(height: 16),
-                  if (_reviews.isEmpty)
-                     Padding(
-                       padding: const EdgeInsets.only(top: 20),
-                       child: Text("No ratings yet", style: TextStyle(color: Colors.white.withOpacity(0.5))),
-                     )
-                  else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _reviews.length,
-                      itemBuilder: (context, index) => _buildReviewCard(context, _reviews[index]),
+      body: RefreshIndicator(
+        onRefresh: _loadData,
+        color: MidnightTheme.primaryColor,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: MidnightTheme.primaryColor))
+            : SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    _buildOverallRating(),
+                    const SizedBox(height: 24),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text("Recent Ratings", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                     ),
-                ],
+                    const SizedBox(height: 16),
+                    if (_reviews.isEmpty)
+                       Padding(
+                         padding: const EdgeInsets.only(top: 20),
+                         child: Text("No ratings yet", style: TextStyle(color: Colors.white.withOpacity(0.5))),
+                       )
+                    else
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _reviews.length,
+                        itemBuilder: (context, index) => _buildReviewCard(context, _reviews[index]),
+                      ),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 
@@ -109,7 +113,6 @@ class _RatingHistoryScreenState extends State<RatingHistoryScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(5, (index) {
-              // Handle partial stars roughly or just floor/ceil
               return Icon(
                 index < (_stats['rating'] as num).round() ? Icons.star : Icons.star_border, 
                 color: Colors.amber, 
@@ -146,7 +149,7 @@ class _RatingHistoryScreenState extends State<RatingHistoryScreen> {
                     child: const Icon(Icons.person, size: 16, color: Colors.white),
                   ),
                   const SizedBox(width: 12),
-                  Text(request.seekerHandle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  const Text("Seeker (Anonymous)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ],
               ),
               Text(timeago.format(request.timestamp), style: const TextStyle(color: Colors.grey, fontSize: 12)),
@@ -160,7 +163,6 @@ class _RatingHistoryScreenState extends State<RatingHistoryScreen> {
               size: 16
             )),
           ),
-          // No written review text shown as requested
         ],
       ),
     );

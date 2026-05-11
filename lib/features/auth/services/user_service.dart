@@ -8,7 +8,7 @@ class UserService {
   // Create User in Firestore
   Future<void> createUser(UserModel user) async {
     try {
-      await _usersCollection.doc(user.uid).set(user.toMap());
+      await _usersCollection.doc(user.uid).set(user.toMap(), SetOptions(merge: true));
     } catch (e) {
       throw Exception("Failed to create user profile: $e");
     }

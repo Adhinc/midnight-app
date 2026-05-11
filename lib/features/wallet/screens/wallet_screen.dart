@@ -7,9 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class WalletScreen extends StatefulWidget {
-  final double initialBalance;
-
-  const WalletScreen({super.key, this.initialBalance = 120.0});
+  const WalletScreen({super.key});
 
   @override
   State<WalletScreen> createState() => _WalletScreenState();
@@ -146,76 +144,97 @@ class _WalletScreenState extends State<WalletScreen> {
 
               // Transactions List
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  itemCount: _walletService.transactions.length,
-                  itemBuilder: (context, index) {
-                    final tx = _walletService.transactions[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: MidnightTheme.surfaceColor,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.05),
+                child: _walletService.transactions.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.receipt_long_outlined,
+                              size: 64,
+                              color: Colors.white.withOpacity(0.1),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              "No transactions yet",
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.3),
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        itemCount: _walletService.transactions.length,
+                        itemBuilder: (context, index) {
+                          final tx = _walletService.transactions[index];
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: tx.isCredit
-                                  ? Colors.green.withOpacity(0.1)
-                                  : Colors.red.withOpacity(0.1),
-                              shape: BoxShape.circle,
+                              color: MidnightTheme.surfaceColor,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.05),
+                              ),
                             ),
-                            child: Icon(
-                              tx.isCredit
-                                  ? Icons.arrow_downward
-                                  : Icons.arrow_upward,
-                              color: tx.isCredit ? Colors.green : Colors.red,
-                              size: 20,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: tx.isCredit
+                                        ? Colors.green.withOpacity(0.1)
+                                        : Colors.red.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    tx.isCredit
+                                        ? Icons.arrow_downward
+                                        : Icons.arrow_upward,
+                                    color: tx.isCredit ? Colors.green : Colors.red,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        tx.title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        DateFormat('MMM d, h:mm a').format(tx.date),
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                                 Text(
-                                  tx.title,
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  "${tx.isCredit ? '+' : '-'}₹${tx.amount.toStringAsFixed(0)}",
+                                  style: TextStyle(
+                                    color: tx.isCredit ? Colors.green : Colors.white,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  DateFormat('MMM d, h:mm a').format(tx.date),
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
-                                  ),
-                                ),
                               ],
                             ),
-                          ),
-                          Text(
-                            "${tx.isCredit ? '+' : '-'}₹${tx.amount.toStringAsFixed(0)}",
-                            style: TextStyle(
-                              color: tx.isCredit ? Colors.green : Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ],
           );
@@ -225,15 +244,22 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   void _showAddMoneyDialog(BuildContext context) {
+    final TextEditingController amountController = TextEditingController();
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: MidnightTheme.surfaceColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(24),
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 24,
+            right: 24,
+            top: 24,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,6 +301,52 @@ class _WalletScreenState extends State<WalletScreen> {
                 ],
               ),
               const SizedBox(height: 24),
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: "Enter custom amount",
+                  hintStyle: const TextStyle(color: Colors.grey),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.05),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  prefixIcon: const Icon(Icons.currency_rupee, color: Colors.grey),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    final double? amount = double.tryParse(amountController.text);
+                    if (amount != null && amount >= 10) {
+                      Navigator.pop(context);
+                      _walletService.openCheckout(amount);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Minimum amount is ₹10")),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MidnightTheme.primaryColor,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    "Proceed to Payment",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
             ],
           ),
         );
@@ -309,23 +381,109 @@ class _WalletScreenState extends State<WalletScreen> {
       return;
     }
 
-    // 2. Check Balance
-    if (_walletService.balance < 500) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Minimum withdrawal amount is ₹500")),
-        );
-      }
-      return;
-    }
-
-    // 3. Process (Mocks withdrawal of full balance)
-    await _walletService.withdraw(_walletService.balance);
+    // 2. Show Custom Withdrawal Dialog
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Withdrawal request submitted for processing."),
+      final TextEditingController withdrawController = TextEditingController();
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: MidnightTheme.surfaceColor,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
+        builder: (context) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              left: 24,
+              right: 24,
+              top: 24,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Withdraw Funds",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Available Balance: ₹${_walletService.balance.toStringAsFixed(2)}",
+                  style: const TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: withdrawController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: "Enter amount (Min ₹500)",
+                    hintStyle: const TextStyle(color: Colors.grey),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.05),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    prefixIcon: const Icon(Icons.currency_rupee, color: Colors.grey),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final double? amount = double.tryParse(withdrawController.text);
+                      if (amount == null || amount < 500) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Minimum withdrawal is ₹500")),
+                        );
+                        return;
+                      }
+                      
+                      // Check real-time balance again via service
+                      if (_walletService.balance < amount) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Insufficient balance")),
+                        );
+                        return;
+                      }
+
+                      Navigator.pop(context);
+                      await _walletService.withdraw(amount);
+                      
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Withdrawal request submitted! Expect processing within 24-48 hours."),
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      "Request Withdrawal",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          );
+        },
       );
     }
   }

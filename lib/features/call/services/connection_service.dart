@@ -51,23 +51,29 @@ class ConnectionService {
         .orderBy('addedAt', descending: true)
         .snapshots()
         .asyncMap((snapshot) async {
+      final ids = snapshot.docs.map((d) => d.id).toList();
+      final Map<String, String> handles = {};
+      for (var d in snapshot.docs) {
+        handles[d.id] = (d.data() as Map<String, dynamic>)['listenerHandle'] ?? 'Listener';
+      }
+
+      if (ids.isEmpty) return [];
+
+      // Fetch all listeners in a single batch (Firestore limit is 10)
+      final usersSnapshot = await _db
+          .collection('users')
+          .where(FieldPath.documentId, whereIn: ids.take(10).toList())
+          .get();
+
       List<Map<String, dynamic>> listeners = [];
-
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        final listenerId = data['listenerId'];
-
-        // Now we fetch the real-time status from the 'users' collection
-        final userDoc = await _db.collection('users').doc(listenerId).get();
-        if (userDoc.exists) {
-          final userData = userDoc.data()!;
-          listeners.add({
-            'id': listenerId,
-            'handle': data['listenerHandle'],
-            'isOnline': userData['isOnline'] ?? false,
-            'topics': userData['topics'] ?? [],
-          });
-        }
+      for (var userDoc in usersSnapshot.docs) {
+        final userData = userDoc.data();
+        listeners.add({
+          'id': userDoc.id,
+          'handle': handles[userDoc.id],
+          'isOnline': userData['isOnline'] ?? false,
+          'topics': userData['topics'] ?? [],
+        });
       }
       return listeners;
     });

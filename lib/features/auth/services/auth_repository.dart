@@ -35,7 +35,9 @@ class AuthRepository {
       final userCredential = await _firebaseAuth.signInWithCredential(credential);
       return userCredential.user;
     } on FirebaseAuthException catch (e) {
-      throw e.message ?? "An unknown error occurred";
+      throw Exception(e.message ?? "Authentication failed");
+    } catch (e) {
+      throw Exception("An unexpected error occurred: $e");
     }
   }
 

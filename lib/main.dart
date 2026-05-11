@@ -11,7 +11,11 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: ".env");
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint("Warning: .env file missing. Using system env or defaults.");
+  }
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -20,9 +24,12 @@ void main() async {
   final isListener = prefs.getBool('isListener') ?? false;
 
   // Validate that Firebase Auth session is still active
-  final hasValidAuth = isLoggedIn && FirebaseAuth.instance.currentUser != null;
+  final currentUser = FirebaseAuth.instance.currentUser;
+  final hasValidAuth = isLoggedIn && currentUser != null;
+  
   if (isLoggedIn && !hasValidAuth) {
-    // Session expired or user deleted — clear stale local data
+    // Session expired or user deleted — clear local markers but KEEP handle/role if user exists in DB
+    // Actually, it's safer to clear everything and let them re-login if the auth token is dead
     await prefs.clear();
   }
 
@@ -42,15 +49,23 @@ class MidnightApp extends StatefulWidget {
 }
 
 class _MidnightAppState extends State<MidnightApp> {
+  StreamSubscription<User?>? _authSub;
+
   @override
   void initState() {
     super.initState();
     // Initialize push notifications when a user logs in
-    FirebaseAuth.instance.authStateChanges().listen((User? user) {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((User? user) {
       if (user != null) {
         NotificationService().initialize();
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 
   @override

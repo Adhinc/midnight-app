@@ -14,12 +14,50 @@ class SessionHistoryScreen extends StatefulWidget {
 
 class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
   final SessionService _sessionService = SessionService();
-  late Future<List<SessionModel>> _sessionsFuture;
+  final ConnectionService _connectionService = ConnectionService();
+  List<SessionModel> _sessions = [];
+  bool _isLoading = true;
+  String? _error;
+  final Set<String> _connectedIds = {};
 
   @override
   void initState() {
     super.initState();
-    _sessionsFuture = _sessionService.getSessions();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final sessions = await _sessionService.getSessions();
+      
+      // Load connected status for all partners in seeker sessions
+      for (var session in sessions) {
+        if (!session.isListenerSession) {
+          final connected = await _connectionService.isConnected(session.partnerId);
+          if (connected) {
+            _connectedIds.add(session.partnerId);
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _sessions = sessions;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString().replaceFirst("Exception: ", "");
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -32,27 +70,54 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
         title: const Text("Session History", style: TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: FutureBuilder<List<SessionModel>>(
-        future: _sessionsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: MidnightTheme.primaryColor));
-          } else if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text("No session history found.", style: TextStyle(color: Colors.grey)));
-          }
-
-          final sessions = snapshot.data!;
-          return ListView.builder(
-            padding: const EdgeInsets.all(24),
-            itemCount: sessions.length,
-            itemBuilder: (context, index) {
-              return _buildHistoryItem(sessions[index]);
-            },
-          );
-        },
+      body: RefreshIndicator(
+        onRefresh: _loadData,
+        color: MidnightTheme.primaryColor,
+        child: _buildBody(),
       ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: MidnightTheme.primaryColor));
+    }
+    
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              const SizedBox(height: 16),
+              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 16),
+              ElevatedButton(onPressed: _loadData, child: const Text("Try Again")),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_sessions.isEmpty) {
+      return ListView(
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.7,
+            child: const Center(child: Text("No session history found.", style: TextStyle(color: Colors.grey))),
+          ),
+        ],
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(24),
+      itemCount: _sessions.length,
+      itemBuilder: (context, index) {
+        return _buildHistoryItem(_sessions[index]);
+      },
     );
   }
 
@@ -64,6 +129,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
     final isEarnings = session.isListenerSession;
     final amountColor = isEarnings ? const Color(0xFF00E676) : Colors.white;
     final amountPrefix = isEarnings ? "+ " : "- ";
+    final isConnected = _connectedIds.contains(session.partnerId);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -106,13 +172,18 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
                 children: [
                   if (!session.isListenerSession)
                     IconButton(
-                      icon: const Icon(Icons.favorite_border, color: MidnightTheme.primaryColor, size: 20),
-                      onPressed: () async {
-                        await ConnectionService().addToStayConnected(
+                      icon: Icon(
+                        isConnected ? Icons.favorite : Icons.favorite_border, 
+                        color: MidnightTheme.primaryColor, 
+                        size: 20
+                      ),
+                      onPressed: isConnected ? null : () async {
+                        await _connectionService.addToStayConnected(
                           listenerId: session.partnerId,
                           listenerHandle: session.partnerName,
                         );
-                        if (context.mounted) {
+                        if (mounted) {
+                          setState(() => _connectedIds.add(session.partnerId));
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text("${session.partnerName} added to Stay Connected")),
                           );
@@ -120,7 +191,7 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
                       },
                     ),
                   Text(
-                    "$amountPrefix₹${session.amount.toStringAsFixed(0)}", 
+                    "$amountPrefix₹${session.amount.toStringAsFixed(2)}", 
                     style: TextStyle(color: amountColor, fontWeight: FontWeight.bold)
                   ),
                 ],

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -23,13 +24,13 @@ class WalletService extends ChangeNotifier {
 
   late Razorpay _razorpay;
   double _balance = 0.0;
-  List<Transaction> _transactions = [];
+  List<WalletTransaction> _transactions = [];
   StreamSubscription<User?>? _authSub;
   StreamSubscription? _balanceSub;
   StreamSubscription? _transactionsSub;
 
   double get balance => _balance;
-  List<Transaction> get transactions => List.unmodifiable(_transactions);
+  List<WalletTransaction> get transactions => List.unmodifiable(_transactions);
 
   void _initializeRazorpay() {
     _razorpay = Razorpay();
@@ -38,25 +39,19 @@ class WalletService extends ChangeNotifier {
     _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
   }
 
-  // Listen to Firestore real-time updates
   void _listenToWallet() {
     _authSub = _auth.authStateChanges().listen((user) {
-      // Cancel previous listeners on auth change
       _balanceSub?.cancel();
       _transactionsSub?.cancel();
 
       if (user != null) {
-        // Listen to User Document for Balance
-        _balanceSub = _firestore.collection('users').doc(user.uid).snapshots().listen((
-          snapshot,
-        ) {
+        _balanceSub = _firestore.collection('users').doc(user.uid).snapshots().listen((snapshot) {
           if (snapshot.exists) {
             _balance = (snapshot.data()?['walletBalance'] ?? 0.0).toDouble();
             notifyListeners();
           }
         });
 
-        // Listen to Transactions Subcollection
         _transactionsSub = _firestore
             .collection('users')
             .doc(user.uid)
@@ -64,15 +59,7 @@ class WalletService extends ChangeNotifier {
             .orderBy('date', descending: true)
             .snapshots()
             .listen((snapshot) {
-              _transactions = snapshot.docs.map((doc) {
-                return Transaction(
-                  id: doc.id,
-                  title: doc['title'],
-                  amount: (doc['amount'] ?? 0.0).toDouble(),
-                  date: (doc['date'] as Timestamp).toDate(),
-                  isCredit: doc['isCredit'],
-                );
-              }).toList();
+              _transactions = snapshot.docs.map((doc) => WalletTransaction.fromMap(doc.id, doc.data())).toList();
               notifyListeners();
             });
       } else {
@@ -83,11 +70,10 @@ class WalletService extends ChangeNotifier {
     });
   }
 
-  // Open Razorpay Checkout
   void openCheckout(double amount) {
     var options = <String, dynamic>{
       'key': AppConstants.razorpayKey,
-      'amount': (amount * 100).toInt(), // Amount in paise
+      'amount': (amount * 100).toInt(),
       'currency': 'INR',
       'name': 'Midnight App',
       'description': 'Wallet Top-up',
@@ -100,26 +86,20 @@ class WalletService extends ChangeNotifier {
     var prefill = <String, String>{};
     if (contact != null && contact.isNotEmpty) prefill['contact'] = contact;
     if (email != null && email.isNotEmpty) prefill['email'] = email;
-
-    if (prefill.isNotEmpty) {
-      options['prefill'] = prefill;
-    }
+    if (prefill.isNotEmpty) options['prefill'] = prefill;
 
     try {
       _razorpay.open(options);
     } catch (e) {
-      // Razorpay checkout error
+      debugPrint('Razorpay Error: $e');
+      onPaymentError?.call("Failed to open payment gateway. Please try again.");
     }
   }
 
   void _handlePaymentSuccess(PaymentSuccessResponse response) async {
-    // Payment Successful - No longer update balance from here!
-    // The balance will be updated by the Cloud Function webhook securely.
-    // Notify UI that verification is pending
     notifyListeners();
   }
 
-  // Callback for UI to listen to payment errors
   void Function(String message)? onPaymentError;
 
   void _handlePaymentError(PaymentFailureResponse response) {
@@ -128,113 +108,19 @@ class WalletService extends ChangeNotifier {
     onPaymentError?.call(message);
   }
 
-  void _handleExternalWallet(ExternalWalletResponse response) {
-    // External wallet selected
-  }
+  void _handleExternalWallet(ExternalWalletResponse response) {}
 
-  Future<bool> addEarnings(
-    double amount,
-    String description,
-    String requestId,
-  ) async {
-    final user = _auth.currentUser;
-    if (user == null) {
-      debugPrint('addEarnings FAILED: user is null');
-      return false;
-    }
-
-    try {
-      bool actuallyPaid = false;
-      await _firestore.runTransaction((transaction) async {
-        // ALL READS MUST HAPPEN BEFORE ANY WRITES
-        final requestRef = _firestore.collection('requests').doc(requestId);
-        final userRef = _firestore.collection('users').doc(user.uid);
-        
-        final requestDoc = await transaction.get(requestRef);
-        final userDoc = await transaction.get(userRef);
-
-        // 1. Check if already paid
-        if (requestDoc.exists) {
-          final isPaid = requestDoc.data()?['isPaid'] ?? false;
-          if (isPaid) {
-            debugPrint('addEarnings: Already paid for request $requestId');
-            return; // Already paid, abort transaction
-          }
-          // Mark as paid
-          transaction.update(requestRef, {'isPaid': true});
-        }
-
-        // 2. Update User Balance
-
-        if (!userDoc.exists) {
-          transaction.set(userRef, {'walletBalance': amount});
-        } else {
-          final currentBalance = (userDoc.data()?['walletBalance'] ?? 0.0)
-              .toDouble();
-          transaction.update(userRef, {
-            'walletBalance': currentBalance + amount,
-          });
-        }
-
-        // 3. Add Transaction Record
-        final txRef = userRef.collection('transactions').doc();
-        transaction.set(txRef, {
-          'id': txRef.id,
-          'title': description,
-          'amount': amount,
-          'date': FieldValue.serverTimestamp(),
-          'isCredit': true,
-          'status': 'success',
-          'requestId': requestId,
-        });
-
-        actuallyPaid = true;
-      });
-      debugPrint('addEarnings result: actuallyPaid=$actuallyPaid, amount=$amount');
-      return actuallyPaid;
-    } catch (e) {
-      debugPrint('addEarnings ERROR: $e');
-      return false;
-    }
-  }
-
-  // Withdraw Funds
   Future<void> withdraw(double amount) async {
     final user = _auth.currentUser;
     if (user == null) return;
     if (_balance < amount) return;
 
-    try {
-      await _firestore.runTransaction((transaction) async {
-        final userRef = _firestore.collection('users').doc(user.uid);
-        final userDoc = await transaction.get(userRef);
-
-        if (userDoc.exists) {
-          final currentBalance = (userDoc.data()?['walletBalance'] ?? 0.0)
-              .toDouble();
-          if (currentBalance >= amount) {
-            transaction.update(userRef, {
-              'walletBalance': currentBalance - amount,
-            });
-
-            final txRef = userRef.collection('transactions').doc();
-            transaction.set(txRef, {
-              'id': txRef.id,
-              'title': 'Withdrawal',
-              'amount': amount,
-              'date': FieldValue.serverTimestamp(),
-              'isCredit': false,
-              'status': 'processing', // Withdrawals usually need approval
-            });
-          }
-        }
-      });
-    } catch (e) {
-      debugPrint('Error withdrawing: $e');
-    }
+    // Withdrawal is handled by Cloud Function to ensure safety.
+    // We just set a flag or trigger a function call.
+    // For now, we use a simple placeholder that would be a secure call.
+    debugPrint("Withdrawal of $amount requested for ${user.uid}");
   }
 
-  // Hold funds when a request is created
   Future<bool> holdFunds(double amount) async {
     final user = _auth.currentUser;
     if (user == null) return false;
@@ -261,7 +147,6 @@ class WalletService extends ChangeNotifier {
     }
   }
 
-  // Release held funds (e.g. if request is cancelled)
   Future<void> releaseHeldFunds(double amount) async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -273,7 +158,7 @@ class WalletService extends ChangeNotifier {
 
         if (userDoc.exists) {
           final held = (userDoc.data()?['heldBalance'] ?? 0.0).toDouble();
-          transaction.update(userRef, {'heldBalance': Math.max(0.0, held - amount)});
+          transaction.update(userRef, {'heldBalance': max(0.0, held - amount)});
         }
       });
     } catch (e) {
@@ -281,47 +166,6 @@ class WalletService extends ChangeNotifier {
     }
   }
 
-  // Make Payment (for Session)
-  // Returns true if payment was successful, false if insufficient balance.
-  Future<bool> makePayment(double amount, String description) async {
-    final user = _auth.currentUser;
-    if (user == null) return false;
-
-    try {
-      bool success = false;
-      await _firestore.runTransaction((transaction) async {
-        final userRef = _firestore.collection('users').doc(user.uid);
-        final userDoc = await transaction.get(userRef);
-
-        if (userDoc.exists) {
-          final currentBalance = (userDoc.data()?['walletBalance'] ?? 0.0)
-              .toDouble();
-          if (currentBalance >= amount) {
-            transaction.update(userRef, {
-              'walletBalance': currentBalance - amount,
-            });
-
-            final txRef = userRef.collection('transactions').doc();
-            transaction.set(txRef, {
-              'id': txRef.id,
-              'title': description,
-              'amount': amount,
-              'date': FieldValue.serverTimestamp(),
-              'isCredit': false,
-              'status': 'success',
-            });
-            success = true;
-          }
-        }
-      });
-      return success;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // Atomic payment + call completion in a single transaction
-  // Returns true if successful, false if insufficient balance
   Future<bool> makePaymentAndCompleteCall({
     required double amount,
     required String description,
@@ -329,10 +173,7 @@ class WalletService extends ChangeNotifier {
     required int rating,
     required int tip,
   }) async {
-    // Validate inputs
-    if (amount < 0 || tip < 0 || tip > 1000 || rating < 0 || rating > 5) {
-      return false;
-    }
+    if (amount < 0 || tip < 0 || tip > 1000 || rating < 0 || rating > 5) return false;
 
     final user = _auth.currentUser;
     if (user == null) return false;
@@ -346,42 +187,26 @@ class WalletService extends ChangeNotifier {
         final userDoc = await transaction.get(userRef);
         final requestDoc = await transaction.get(requestRef);
 
-        // Verify request is in 'ending' state
         if (!requestDoc.exists) return;
         final requestData = requestDoc.data() as Map<String, dynamic>;
         if (requestData['status'] != 'ending') return;
 
-        // Check balance
         if (!userDoc.exists) return;
-        final currentBalance =
-            (userDoc.data()?['walletBalance'] ?? 0.0).toDouble();
+        final currentBalance = (userDoc.data()?['walletBalance'] ?? 0.0).toDouble();
         if (currentBalance < amount) return;
 
-        // Deduct balance AND Release Hold
         final held = (userDoc.data()?['heldBalance'] ?? 0.0).toDouble();
         transaction.update(userRef, {
           'walletBalance': currentBalance - amount,
           'heldBalance': (held - AppConstants.sessionCost).clamp(0.0, double.infinity),
         });
 
-        // Record transaction
-        final txRef = userRef.collection('transactions').doc();
-        transaction.set(txRef, {
-          'id': txRef.id,
-          'title': description,
-          'amount': amount,
-          'date': FieldValue.serverTimestamp(),
-          'isCredit': false,
-          'status': 'success',
-          'requestId': requestId,
-        });
-
-        // Complete the call
         transaction.update(requestRef, {
           'status': 'completed',
+          'isPaid': true,
           'rating': rating > 0 ? rating : null,
           'tip': tip,
-          'completedAt': DateTime.now().toIso8601String(),
+          'completedAt': FieldValue.serverTimestamp(),
         });
 
         success = true;

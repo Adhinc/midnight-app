@@ -12,6 +12,77 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../wallet/services/wallet_service.dart';
 import '../../call/services/connection_service.dart';
+
+class UserModel {
+  final String uid;
+  final String email;
+  final String handle;
+  final String role; // 'seeker' or 'listener'
+  final bool isOnline; // specific to listener
+  final List<String> topics; // specific to listener
+  final double rating;
+  final String bio;
+  final String profilePicUrl;
+  final String? fcmToken;
+  final List<String> languages;
+  final double heldBalance;
+  final DateTime createdAt;
+
+  UserModel({
+    required this.uid,
+    required this.email,
+    required this.handle,
+    required this.role,
+    this.isOnline = false,
+    this.topics = const [],
+    this.rating = 0.0,
+    this.bio = '',
+    this.profilePicUrl = '',
+    this.fcmToken,
+    this.languages = const ['English'],
+    this.heldBalance = 0.0,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'uid': uid,
+      'email': email,
+      'handle': handle,
+      'role': role,
+      'isOnline': isOnline,
+      'topics': topics,
+      'rating': rating,
+      'bio': bio,
+      'profilePicUrl': profilePicUrl,
+      'fcmToken': fcmToken,
+      'languages': languages,
+      'heldBalance': heldBalance,
+      'createdAt': createdAt.toIso8601String(),
+    };
+  }
+
+  factory UserModel.fromMap(Map<String, dynamic> map) {
+    return UserModel(
+      uid: map['uid'] ?? '',
+      email: map['email'] ?? '',
+      handle: map['handle'] ?? '',
+      role: map['role'] ?? 'seeker',
+      isOnline: map['isOnline'] ?? false,
+      topics: List<String>.from(map['topics'] ?? []),
+      rating: (map['rating'] ?? 0.0).toDouble(),
+      bio: map['bio'] ?? '',
+      profilePicUrl: map['profilePicUrl'] ?? '',
+      fcmToken: map['fcmToken'],
+      languages: List<String>.from(map['languages'] ?? ['English']),
+      heldBalance: (map['heldBalance'] ?? 0.0).toDouble(),
+      createdAt: map['createdAt'] is String 
+          ? (DateTime.tryParse(map['createdAt']) ?? DateTime.now())
+          : (map['createdAt'] as dynamic)?.toDate() ?? DateTime.now(),
+    );
+  }
+}
+
 class HomeScreen extends StatefulWidget {
   final bool isListener;
   const HomeScreen({super.key, required this.isListener});
@@ -40,10 +111,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadHandle() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _handle = prefs.getString('handle') ?? "User";
-    });
+    final user = _auth.currentUser;
+    if (user != null) {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      if (doc.exists && mounted) {
+        setState(() {
+          _handle = doc.data()?['handle'] ?? "User";
+        });
+      }
+    }
   }
 
   @override
@@ -350,8 +426,6 @@ class _ExplorePageState extends State<_ExplorePage> {
                         final userDoc = await FirebaseFirestore.instance
                             .collection('users').doc(user.uid).get();
                         final liveBalance = (userDoc.data()?['walletBalance'] ?? 0.0).toDouble();
-                          return;
-                        }
 
                         // ── Wallet Hold ──
                         final holdSuccess = await _walletService.holdFunds(AppConstants.sessionCost.toDouble());
@@ -456,59 +530,6 @@ class _ExplorePageState extends State<_ExplorePage> {
       ),
     );
   }
-  void _startTargetedCall(Map<String, dynamic> listener) async {
-    if (_isProcessing) return;
-    
-    // Validate balance
-    if (_walletService.balance < AppConstants.sessionCost) {
-       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Insufficient balance to call this listener.")),
-      );
-      return;
-    }
-
-    if (!listener['isOnline']) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("${listener['handle']} is currently offline.")),
-      );
-      return;
-    }
-
-    setState(() => _isProcessing = true);
-    try {
-      final user = _auth.currentUser;
-      if (user == null) return;
-
-      final request = HelpRequest(
-        id: '',
-        seekerId: user.uid,
-        seekerHandle: _handle,
-        topic: (listener['topics'] as List).isNotEmpty ? listener['topics'][0] : "General",
-        mood: "Reconnecting",
-        status: 'open',
-        timestamp: DateTime.now(),
-        listenerId: listener['id'], // Target this specific listener
-        language: listener['language'] ?? 'English',
-      );
-
-      final requestId = await _requestService.createRequest(request);
-
-      if (mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => MatchRadarScreen(requestId: requestId),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e")),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
-    }
   }
 }
 
@@ -616,24 +637,33 @@ class _ConnectedPageState extends State<_ConnectedPage> {
   void _startTargetedCall(Map<String, dynamic> listener) async {
     if (_isProcessing) return;
     
-    if (_walletService.balance < AppConstants.sessionCost) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Insufficient balance.")),
-      );
-      return;
-    }
-
-    if (!listener['isOnline']) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("${listener['handle']} is offline.")),
-      );
-      return;
-    }
-
     setState(() => _isProcessing = true);
     try {
       final user = _auth.currentUser;
       if (user == null) return;
+
+      // ── Wallet Hold for Targeted Call ──
+      final holdSuccess = await _walletService.holdFunds(AppConstants.sessionCost.toDouble());
+      if (!holdSuccess) {
+        if (mounted) {
+          setState(() => _isProcessing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Insufficient available balance or pending request.")),
+          );
+        }
+        return;
+      }
+
+      if (!listener['isOnline']) {
+        await _walletService.releaseHeldFunds(AppConstants.sessionCost.toDouble());
+        if (mounted) {
+          setState(() => _isProcessing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("${listener['handle']} is offline.")),
+          );
+        }
+        return;
+      }
 
       final request = HelpRequest(
         id: '',
@@ -652,6 +682,13 @@ class _ConnectedPageState extends State<_ConnectedPage> {
       if (mounted) {
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => MatchRadarScreen(requestId: requestId)),
+        );
+      }
+    } catch (e) {
+      await _walletService.releaseHeldFunds(AppConstants.sessionCost.toDouble());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e")),
         );
       }
     } finally {

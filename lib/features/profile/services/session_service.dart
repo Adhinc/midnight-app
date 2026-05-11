@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/constants.dart';
 import '../models/session_model.dart';
 
@@ -30,18 +31,24 @@ class SessionService {
       final sessions = allDocs.map((doc) {
         final data = doc.data();
         final isListenerSession = data['listenerId'] == uid;
+        final partnerId = isListenerSession 
+            ? (data['seekerId'] ?? '') 
+            : (data['listenerId'] ?? '');
         final partnerName = isListenerSession
             ? (data['seekerHandle'] ?? 'Anonymous')
             : (data['listenerHandle'] ?? 'Anonymous');
-        final tip = (data['tip'] ?? 0) as int;
-        final basePay = AppConstants.sessionBasePay;
+        
+        final tip = (data['tip'] ?? 0).toInt();
+        
+        // Listener earns: basePay + tip
+        // Seeker pays: sessionCost + tip
         final amount = isListenerSession
-            ? (basePay + tip)
-                  .toDouble() // listener earns base + tip
-            : (basePay + tip).toDouble(); // seeker pays base + tip
+            ? (AppConstants.sessionBasePay + tip).toDouble()
+            : (AppConstants.sessionCost + tip).toDouble();
 
         return SessionModel(
           id: doc.id,
+          partnerId: partnerId,
           partnerName: partnerName,
           date: _parseDate(data['completedAt'] ?? data['timestamp']),
           duration: _parseDuration(data['connectedAt'], data['completedAt']),
@@ -55,8 +62,8 @@ class SessionService {
       sessions.sort((a, b) => b.date.compareTo(a.date));
       return sessions;
     } catch (e) {
-      // SessionService error
-      return [];
+      debugPrint("SessionService Error: $e");
+      throw Exception("Failed to load session history. Please check your connection.");
     }
   }
 

@@ -42,8 +42,8 @@ class AgoraService {
     await requestPermissions();
     if (onLog != null) onLog!("AgoraService: Permission request completed");
 
-    if (AppConstants.agoraAppId == "YOUR_AGORA_APP_ID") {
-      if (onLog != null) onLog!("AGORA ERROR: App ID missing");
+    if (AppConstants.agoraAppId.isEmpty || AppConstants.agoraAppId == "YOUR_AGORA_APP_ID") {
+      if (onLog != null) onLog!("AGORA ERROR: App ID missing or placeholder used.");
       return;
     }
 
@@ -95,6 +95,7 @@ class AgoraService {
             },
         onError: (ErrorCodeType err, String msg) {
           if (onLog != null) onLog!("❌ ERROR: $err - $msg");
+          if (onError != null) onError!(err, msg);
         },
         onConnectionStateChanged:
             (
@@ -107,10 +108,24 @@ class AgoraService {
               }
             },
         onLeaveChannel: (RtcConnection connection, RtcStats stats) {
-          if (onLog != null) onLog!("⚠️ Left channel unexpectedly!");
+          if (onLog != null) onLog!("Agora Event: Left channel ${connection.channelId}");
         },
-        onRequestToken: (RtcConnection connection) {
-          if (onLog != null) onLog!("🔑 Token requested - check App ID config");
+        onRequestToken: (RtcConnection connection) async {
+          if (onLog != null) onLog!("🔑 Token expired - fetching refresh...");
+          if (currentUid != null) {
+            try {
+              final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('generateAgoraToken');
+              final response = await callable.call({
+                'channelId': connection.channelId,
+                'uid': currentUid,
+              });
+              final newToken = response.data['token'] as String;
+              await _engine?.renewToken(newToken);
+              if (onLog != null) onLog!("✅ Token renewed successfully!");
+            } catch (e) {
+              if (onLog != null) onLog!("❌ Token renewal FAILED: $e");
+            }
+          }
         },
       ),
     );
@@ -192,8 +207,6 @@ class AgoraService {
       // Ensure remote audio is not muted
       await _engine!.muteAllRemoteAudioStreams(false);
 
-      // Give it a moment then check connection state
-      await Future.delayed(const Duration(milliseconds: 500));
       if (onLog != null) onLog!("⏳ Waiting for Agora callback...");
     } catch (e) {
       if (onLog != null) onLog!("AGORA JOIN EXCEPTION: $e");
@@ -214,5 +227,11 @@ class AgoraService {
     _engine = null;
     _isInitialized = false;
     currentUid = null;
+    // Clear callbacks to prevent calls on disposed widgets
+    onUserJoined = null;
+    onUserOffline = null;
+    onJoinChannelSuccess = null;
+    onError = null;
+    onLog = null;
   }
 }

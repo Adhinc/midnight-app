@@ -34,6 +34,7 @@ class ModerationService {
   Future<void> blockUser({required String blockedUid}) async {
     final currentUser = _auth.currentUser;
     if (currentUser == null) throw Exception("Not logged in");
+    if (currentUser.uid == blockedUid) throw Exception("You cannot block yourself.");
 
     try {
       // Atomic: both writes in a single batch
@@ -55,7 +56,7 @@ class ModerationService {
 
       await batch.commit();
     } catch (e) {
-      throw Exception("Failed to block user.");
+      throw Exception(e is String ? e : "Failed to block user.");
     }
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/theme.dart';
 import '../../../core/validators.dart';
 import '../../home/screens/home_screen.dart';
@@ -46,12 +47,23 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     final handle = _handleController.text.trim();
 
     try {
+      // 1. Check Handle Uniqueness
+      final query = await FirebaseFirestore.instance
+          .collection('users')
+          .where('handle', isEqualTo: handle)
+          .limit(1)
+          .get();
+      
+      if (query.docs.isNotEmpty && query.docs.first.id != widget.uid) {
+        throw "Handle already taken. Please choose another one.";
+      }
+
       final newUser = UserModel(
         uid: widget.uid,
-        email: widget.phoneNumber, // We use phoneNumber as email fallback for now
+        phone: widget.phoneNumber,
         handle: handle,
         role: _isListener ? 'listener' : 'seeker',
-        isOnline: _isListener,
+        isOnline: false, // Always start offline until they pick topics
         topics: [],
         languages: _selectedLanguages,
         createdAt: DateTime.now(),

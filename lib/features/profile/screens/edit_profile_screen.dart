@@ -55,6 +55,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _bioController.text = data['bio'] ?? '';
         _profilePicUrl = data['profilePicUrl'];
         _selectedLanguages = List<String>.from(data['languages'] ?? ['English']);
+        if (_selectedLanguages.isEmpty) _selectedLanguages = ['English'];
       }
     } catch (e) {
       final prefs = await SharedPreferences.getInstance();
@@ -75,7 +76,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 70, // Supported on all platforms
+        imageQuality: 70,
       );
     } catch (e) {
       if (mounted) {
@@ -86,32 +87,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
-    if (pickedFile == null) return; // User canceled picking
-    if (!mounted) return;
+    if (pickedFile == null) return;
+    
+    // File Size Validation (Max 5MB)
+    final bytes = await pickedFile.readAsBytes();
+    if (bytes.length > 5 * 1024 * 1024) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Image size must be less than 5MB")),
+        );
+      }
+      return;
+    }
 
     setState(() => _isUploadingPic = true);
 
     try {
-      final storageRef = FirebaseStorage.instance.ref().child(
-        'profile_pictures/$uid.jpg',
-      );
+      // Use unique filename to prevent cache/corruption issues
+      final fileName = 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final storageRef = FirebaseStorage.instance.ref().child('profile_pictures/$uid/$fileName');
 
-      // Web-safe file upload using bytes
-      final bytes = await pickedFile.readAsBytes();
       await storageRef.putData(
         bytes,
         SettableMetadata(contentType: 'image/jpeg'),
       );
 
-      // Get download URL
       final downloadUrl = await storageRef.getDownloadURL();
 
-      // Update Firestore immediately
+      // Update Firestore
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'profilePicUrl': downloadUrl,
       });
 
-      // Update SharedPrefs
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('profilePicUrl', downloadUrl);
 
@@ -125,9 +132,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Failed to upload image: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed to upload image: $e")));
       }
     } finally {
       if (mounted) setState(() => _isUploadingPic = false);
@@ -136,17 +141,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedLanguages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select at least one language")));
+      return;
+    }
+
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+    
     setState(() => _isSaving = true);
+    final handle = _nameController.text.trim();
+
     try {
+      // Handle Uniqueness Check (if changed)
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final currentHandle = doc.data()?['handle'];
+      
+      if (handle != currentHandle) {
+        final query = await FirebaseFirestore.instance
+            .collection('users')
+            .where('handle', isEqualTo: handle)
+            .limit(1)
+            .get();
+        
+        if (query.docs.isNotEmpty) {
+          throw "Handle already taken. Please choose another one.";
+        }
+      }
+
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'handle': _nameController.text.trim(),
+        'handle': handle,
         'bio': _bioController.text.trim(),
         'languages': _selectedLanguages,
+        'profilePicUrl': _profilePicUrl, // Sync URL
       });
+      
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('handle', _nameController.text.trim());
+      await prefs.setString('handle', handle);
+      if (_profilePicUrl != null) await prefs.setString('profilePicUrl', _profilePicUrl!);
 
       if (mounted) {
         Navigator.pop(context);
@@ -156,9 +188,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Failed to save: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -179,42 +209,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          "Edit Profile",
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text("Edit Profile", style: TextStyle(color: Colors.white)),
         leading: const BackButton(color: Colors.white),
         actions: [
           _isSaving
               ? const Padding(
                   padding: EdgeInsets.all(16),
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: MidnightTheme.primaryColor,
-                    ),
-                  ),
+                  child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MidnightTheme.primaryColor)),
                 )
               : TextButton(
                   onPressed: _saveProfile,
-                  child: const Text(
-                    "Save",
-                    style: TextStyle(
-                      color: MidnightTheme.primaryColor,
-                      fontSize: 16,
-                    ),
-                  ),
+                  child: const Text("Save", style: TextStyle(color: MidnightTheme.primaryColor, fontSize: 16)),
                 ),
         ],
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: MidnightTheme.primaryColor,
-              ),
-            )
+          ? const Center(child: CircularProgressIndicator(color: MidnightTheme.primaryColor))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Form(
@@ -222,42 +232,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Column(
                 children: [
                   GestureDetector(
-                    onTap: _pickAndUploadImage,
+                    onTap: _isUploadingPic ? null : _pickAndUploadImage,
                     child: Stack(
                       alignment: Alignment.bottomRight,
                       children: [
                         CircleAvatar(
                           radius: 50,
                           backgroundColor: MidnightTheme.surfaceColor,
-                          backgroundImage:
-                              _profilePicUrl != null &&
-                                  _profilePicUrl!.isNotEmpty
-                              ? NetworkImage(_profilePicUrl!)
-                              : null,
+                          backgroundImage: _profilePicUrl != null && _profilePicUrl!.isNotEmpty ? NetworkImage(_profilePicUrl!) : null,
                           child: _isUploadingPic
-                              ? const CircularProgressIndicator(
-                                  color: MidnightTheme.primaryColor,
-                                )
-                              : (_profilePicUrl == null ||
-                                        _profilePicUrl!.isEmpty
-                                    ? const Icon(
-                                        Icons.person,
-                                        size: 50,
-                                        color: Colors.white,
-                                      )
-                                    : null),
+                              ? const CircularProgressIndicator(color: MidnightTheme.primaryColor)
+                              : (_profilePicUrl == null || _profilePicUrl!.isEmpty ? const Icon(Icons.person, size: 50, color: Colors.white) : null),
                         ),
                         Container(
                           padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: MidnightTheme.primaryColor,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.camera_alt,
-                            color: Colors.black,
-                            size: 20,
-                          ),
+                          decoration: const BoxDecoration(color: MidnightTheme.primaryColor, shape: BoxShape.circle),
+                          child: const Icon(Icons.camera_alt, color: Colors.black, size: 20),
                         ),
                       ],
                     ),
@@ -269,10 +259,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(height: 32),
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      "Spoken Languages",
-                      style: TextStyle(color: Colors.grey, fontSize: 14),
-                    ),
+                    child: Text("Spoken Languages", style: TextStyle(color: Colors.grey, fontSize: 14)),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
@@ -297,15 +284,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         backgroundColor: MidnightTheme.surfaceColor,
                         selectedColor: MidnightTheme.primaryColor.withOpacity(0.2),
                         checkmarkColor: MidnightTheme.primaryColor,
-                        labelStyle: TextStyle(
-                          color: isSelected ? MidnightTheme.primaryColor : Colors.white,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: isSelected ? MidnightTheme.primaryColor : Colors.white.withOpacity(0.1),
-                          ),
-                        ),
+                        labelStyle: TextStyle(color: isSelected ? MidnightTheme.primaryColor : Colors.white),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? MidnightTheme.primaryColor : Colors.white.withOpacity(0.1))),
                       );
                     }).toList(),
                   ),
@@ -316,13 +296,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildTextField(
-    String label,
-    TextEditingController controller, {
-    int maxLines = 1,
-    int? maxLength,
-    String? Function(String?)? validator,
-  }) {
+  Widget _buildTextField(String label, TextEditingController controller, {int maxLines = 1, int? maxLength, String? Function(String?)? validator}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -338,14 +312,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             filled: true,
             fillColor: MidnightTheme.surfaceColor,
             counterStyle: const TextStyle(color: Colors.grey),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: MidnightTheme.primaryColor),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: MidnightTheme.primaryColor)),
           ),
         ),
       ],

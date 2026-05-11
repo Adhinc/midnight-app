@@ -9,219 +9,14 @@ import 'legal_screen.dart';
 class AccountSettingsScreen extends StatelessWidget {
   const AccountSettingsScreen({super.key});
 
-  Future<void> _changePasswordInApp(BuildContext context) async {
-    final currentPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-    bool isLoading = false;
-    String? errorMessage;
-
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            backgroundColor: const Color(0xFF1A1A2E),
-            title: const Text(
-              "Change Password",
-              style: TextStyle(color: Colors.white),
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (errorMessage != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Text(
-                        errorMessage!,
-                        style: const TextStyle(color: Colors.red, fontSize: 14),
-                      ),
-                    ),
-                  TextField(
-                    controller: currentPasswordController,
-                    obscureText: true,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: "Current Password",
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: MidnightTheme.surfaceColor,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: newPasswordController,
-                    obscureText: true,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: "New Password",
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: MidnightTheme.surfaceColor,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: confirmPasswordController,
-                    obscureText: true,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: "Confirm New Password",
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      filled: true,
-                      fillColor: MidnightTheme.surfaceColor,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: isLoading ? null : () => Navigator.pop(ctx),
-                child: const Text(
-                  "Cancel",
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MidnightTheme.primaryColor,
-                ),
-                onPressed: isLoading
-                    ? null
-                    : () async {
-                        final current = currentPasswordController.text;
-                        final newPass = newPasswordController.text;
-                        final confirm = confirmPasswordController.text;
-
-                        if (current.isEmpty ||
-                            newPass.isEmpty ||
-                            confirm.isEmpty) {
-                          setState(
-                            () => errorMessage = "Please fill all fields",
-                          );
-                          return;
-                        }
-
-                        if (newPass != confirm) {
-                          setState(
-                            () => errorMessage = "New passwords do not match",
-                          );
-                          return;
-                        }
-
-                        if (newPass.length < 8) {
-                          setState(
-                            () => errorMessage =
-                                "Password must be at least 8 characters",
-                          );
-                          return;
-                        }
-
-                        if (!newPass.contains(RegExp(r'[A-Z]')) ||
-                            !newPass.contains(RegExp(r'[0-9]'))) {
-                          setState(
-                            () => errorMessage =
-                                "Must contain an uppercase letter and a number",
-                          );
-                          return;
-                        }
-
-                        setState(() {
-                          isLoading = true;
-                          errorMessage = null;
-                        });
-
-                        try {
-                          final user = FirebaseAuth.instance.currentUser;
-                          if (user != null && user.email != null) {
-                            // 1. Re-authenticate user
-                            final credential = EmailAuthProvider.credential(
-                              email: user.email!,
-                              password: current,
-                            );
-                            await user.reauthenticateWithCredential(credential);
-
-                            // 2. Update password
-                            await user.updatePassword(newPass);
-
-                            if (ctx.mounted) {
-                              Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Password changed successfully!",
-                                  ),
-                                ),
-                              );
-                            }
-                          }
-                        } on FirebaseAuthException catch (e) {
-                          setState(() {
-                            if (e.code == 'invalid-credential' ||
-                                e.code == 'wrong-password') {
-                              errorMessage = "Incorrect current password";
-                            } else {
-                              errorMessage = e.message ?? "An error occurred";
-                            }
-                            isLoading = false;
-                          });
-                        } catch (e) {
-                          setState(() {
-                            errorMessage = e.toString();
-                            isLoading = false;
-                          });
-                        }
-                      },
-                child: isLoading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.black,
-                        ),
-                      )
-                    : const Text(
-                        "Save",
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   Future<void> _deleteAccount(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A2E),
-        title: const Text(
-          "Delete Account",
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text("Delete Account", style: TextStyle(color: Colors.white)),
         content: const Text(
-          "This will permanently delete your account and all your data. This cannot be undone.",
+          "This will permanently delete your account, wallet balance, and all your data. This cannot be undone.",
           style: TextStyle(color: Colors.grey),
         ),
         actions: [
@@ -231,7 +26,7 @@ class AccountSettingsScreen extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+            child: const Text("Delete Everything", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -239,36 +34,60 @@ class AccountSettingsScreen extends StatelessWidget {
 
     if (confirmed != true || !context.mounted) return;
 
+    // Show loading overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator(color: MidnightTheme.primaryColor)),
+    );
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         final uid = user.uid;
-
-        // Cancel all active requests for this user (as seeker or listener)
         final firestore = FirebaseFirestore.instance;
-        final seekerRequests = await firestore
-            .collection('requests')
-            .where('seekerId', isEqualTo: uid)
-            .where('status', whereIn: ['open', 'pending', 'accepted', 'connected'])
-            .get();
-        final listenerRequests = await firestore
-            .collection('requests')
-            .where('listenerId', isEqualTo: uid)
-            .where('status', whereIn: ['pending', 'accepted', 'connected'])
-            .get();
+
+        // 1. Cancel all active/ending calls
+        final activeStatuses = ['open', 'pending', 'accepted', 'connected', 'ending'];
+        final seekerRequests = await firestore.collection('requests').where('seekerId', isEqualTo: uid).where('status', whereIn: activeStatuses).get();
+        final listenerRequests = await firestore.collection('requests').where('listenerId', isEqualTo: uid).where('status', whereIn: activeStatuses).get();
+        
         final batch = firestore.batch();
         for (var doc in [...seekerRequests.docs, ...listenerRequests.docs]) {
-          batch.update(doc.reference, {'status': 'cancelled'});
+          batch.update(doc.reference, {'status': 'cancelled', 'cancelledAt': FieldValue.serverTimestamp()});
         }
-        if (seekerRequests.docs.isNotEmpty || listenerRequests.docs.isNotEmpty) {
-          await batch.commit();
-        }
+        if (seekerRequests.docs.isNotEmpty || listenerRequests.docs.isNotEmpty) await batch.commit();
 
-        // Delete Firebase Auth account FIRST (more likely to fail if re-auth needed)
-        await user.delete();
-        // Only delete Firestore data after auth deletion succeeds
-        await firestore.collection('users').doc(uid).delete();
+        // 2. Delete Firestore Data (Subcollections first)
+        // Note: Client-side subcollection deletion is limited. Ideally this would be a Cloud Function.
+        // We'll delete the main subcollections we know about.
+        final transactions = await firestore.collection('users').doc(uid).collection('transactions').get();
+        final connections = await firestore.collection('users').doc(uid).collection('stay_connected').get();
+        
+        final deleteBatch = firestore.batch();
+        for (var doc in transactions.docs) deleteBatch.delete(doc.reference);
+        for (var doc in connections.docs) deleteBatch.delete(doc.reference);
+        deleteBatch.delete(firestore.collection('users').doc(uid));
+        
+        await deleteBatch.commit();
+
+        // 3. Delete Auth Account LAST
+        try {
+          await user.delete();
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'requires-recent-login') {
+            if (context.mounted) {
+              Navigator.pop(context); // Close loading
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Sensitive action: Please re-login and try again to delete.")),
+              );
+              return;
+            }
+          }
+          rethrow;
+        }
       }
+      
       final prefs = await SharedPreferences.getInstance();
       await prefs.clear();
 
@@ -281,13 +100,8 @@ class AccountSettingsScreen extends StatelessWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              "Error deleting account: $e\nPlease re-login and try again.",
-            ),
-          ),
-        );
+        Navigator.pop(context); // Close loading
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error during deletion: $e")));
       }
     }
   }
@@ -299,93 +113,39 @@ class AccountSettingsScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          "Account Settings",
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text("Account Settings", style: TextStyle(color: Colors.white)),
         leading: const BackButton(color: Colors.white),
       ),
       body: ListView(
         padding: const EdgeInsets.all(24),
         children: [
           _buildSectionHeader("Coming Soon"),
-          _buildComingSoonTile(
-            "Notifications",
-            "Receive alerts for incoming calls",
-          ),
-          _buildComingSoonTile("Dark Mode", "Toggle app theme"),
+          _buildComingSoonTile("Notifications", "Receive alerts for incoming calls"),
           _buildComingSoonTile("Incognito Mode", "Hide your online status"),
 
           const SizedBox(height: 32),
           _buildSectionHeader("Legal"),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text(
-              "Privacy Policy",
-              style: TextStyle(color: Colors.white),
-            ),
-            subtitle: const Text(
-              "How we handle your data",
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
+            title: const Text("Privacy Policy", style: TextStyle(color: Colors.white)),
+            subtitle: const Text("How we handle your data", style: TextStyle(color: Colors.grey, fontSize: 12)),
             trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => LegalScreen(
-                  title: "Privacy Policy",
-                  content: LegalScreen.getPrivacyPolicy(),
-                ),
-              ),
-            ),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LegalScreen(title: "Privacy Policy", content: LegalScreen.getPrivacyPolicy()))),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text(
-              "Terms of Use",
-              style: TextStyle(color: Colors.white),
-            ),
-            subtitle: const Text(
-              "Rules for using Midnight",
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
+            title: const Text("Terms of Use", style: TextStyle(color: Colors.white)),
+            subtitle: const Text("Rules for using Midnight", style: TextStyle(color: Colors.grey, fontSize: 12)),
             trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => LegalScreen(
-                  title: "Terms of Use",
-                  content: LegalScreen.getTermsOfUse(),
-                ),
-              ),
-            ),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => LegalScreen(title: "Terms of Use", content: LegalScreen.getTermsOfUse()))),
           ),
 
           const SizedBox(height: 32),
-          _buildSectionHeader("Account"),
+          _buildSectionHeader("Danger Zone"),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text(
-              "Change Password",
-              style: TextStyle(color: Colors.white),
-            ),
-            subtitle: const Text(
-              "Update your password securely",
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-            onTap: () => _changePasswordInApp(context),
-          ),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text(
-              "Delete Account",
-              style: TextStyle(color: Colors.red),
-            ),
-            subtitle: const Text(
-              "Permanently remove your account",
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
+            title: const Text("Delete Account", style: TextStyle(color: Colors.red)),
+            subtitle: const Text("Permanently remove your account and balance", style: TextStyle(color: Colors.grey, fontSize: 12)),
             trailing: const Icon(Icons.chevron_right, color: Colors.red),
             onTap: () => _deleteAccount(context),
           ),
@@ -397,14 +157,7 @@ class AccountSettingsScreen extends StatelessWidget {
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        title.toUpperCase(),
-        style: const TextStyle(
-          color: MidnightTheme.secondaryColor,
-          fontWeight: FontWeight.bold,
-          fontSize: 12,
-        ),
-      ),
+      child: Text(title.toUpperCase(), style: const TextStyle(color: MidnightTheme.secondaryColor, fontWeight: FontWeight.bold, fontSize: 12)),
     );
   }
 
@@ -412,20 +165,11 @@ class AccountSettingsScreen extends StatelessWidget {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       title: Text(title, style: const TextStyle(color: Colors.white54)),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(color: Colors.grey, fontSize: 12),
-      ),
+      subtitle: Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
       trailing: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.white10,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Text(
-          "Soon",
-          style: TextStyle(color: Colors.grey, fontSize: 11),
-        ),
+        decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
+        child: const Text("Soon", style: TextStyle(color: Colors.grey, fontSize: 11)),
       ),
     );
   }

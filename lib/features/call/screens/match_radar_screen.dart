@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/theme.dart';
+import '../../../core/constants.dart';
 import 'call_screen.dart';
 import '../models/listener_model.dart';
+import '../models/help_request.dart';
 import '../services/request_service.dart';
+import '../../wallet/services/wallet_service.dart';
 import 'dart:async';
 
 class MatchRadarScreen extends StatefulWidget {
@@ -38,8 +41,7 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
   void _startTimeout() {
     _timeoutTimer = Timer(const Duration(minutes: 2), () {
       if (!_matchFound && mounted) {
-        _requestService.cancelRequest(widget.requestId);
-        WalletService().releaseHeldFunds(50);
+        _cancelEverything();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("No listeners available. Please try again.")),
         );
@@ -48,15 +50,23 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
     });
   }
 
+  Future<void> _cancelEverything() async {
+    _requestSubscription?.cancel();
+    await _requestService.cancelRequest(widget.requestId);
+    await WalletService().releaseHeldFunds(AppConstants.sessionCost.toDouble());
+  }
+
   void _startScanning() {
-    // Listen to request status changes
     _requestSubscription = _requestService
         .streamRequestById(widget.requestId)
         .listen(
           (request) async {
-            if (request != null && request.status == 'accepted' && mounted) {
+            if (request == null || !mounted) return;
 
-              // Fetch actual listener profile data from Firestore
+            // Trigger match profile for pending, accepted, or connected
+            if (['pending', 'accepted', 'connected'].contains(request.status) && !_matchFound) {
+              _matchFound = true; // Mark as found to stop scanning UI
+              
               String lId = request.listenerId ?? '';
               Map<String, dynamic> userData = {};
               if (lId.isNotEmpty) {
@@ -66,47 +76,41 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
                       .doc(lId)
                       .get();
                   userData = userDoc.data() ?? {};
-                } catch (_) {
-                  // Failed to fetch listener data
-                }
+                } catch (_) {}
               }
 
               if (mounted) {
                 setState(() {
                   _matchedListener = ListenerProfile(
                     id: lId,
-                    name:
-                        request.listenerHandle ??
-                        userData['handle'] ??
-                        'Listener',
-                    rating: (userData['rating'] ?? 4.8).toDouble(),
-                    acceptanceRate: (userData['acceptanceRate'] ?? 0.9)
-                        .toDouble(),
-                    totalCalls: (userData['totalCalls'] ?? 24).toInt(),
+                    name: request.listenerHandle ?? userData['handle'] ?? 'Listener',
+                    rating: (userData['rating'] ?? 0.0).toDouble(), // No fake stats
+                    acceptanceRate: (userData['acceptanceRate'] ?? 1.0).toDouble(),
+                    totalCalls: (userData['totalCalls'] ?? 0).toInt(), // No fake stats
                     isOnline: userData['isOnline'] ?? true,
                     topics: [request.topic],
-                    bio:
-                        userData['bio'] ?? 'Experienced listener ready to help',
+                    bio: userData['bio'] ?? 'Ready to listen and support you.',
                   );
-                  _matchFound = true;
                 });
               }
             }
           },
-
           onError: (_) {},
-          onDone: () {},
         );
   }
 
   void _onConnect() async {
-    // Set request status to 'connected' - both users enter call simultaneously
     try {
-      // Stop listening to this request as we are connecting
       _requestSubscription?.cancel();
       await _requestService.connectRequest(widget.requestId);
-    } catch (_) {
-      // connectRequest failed
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Connection failed: $e")),
+        );
+      }
+      _startScanning(); // Resume scanning if it failed
+      return;
     }
 
     if (!mounted) return;
@@ -118,17 +122,14 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
     );
 
     if (mounted) {
-      // Forward the result to Home
       Navigator.of(context).pop(result);
     }
   }
 
   void _onSkip() async {
-    // Cancel current request and create a new one
-    await _requestService.cancelRequest(widget.requestId);
-    await WalletService().releaseHeldFunds(50);
+    await _cancelEverything();
     if (mounted) {
-      Navigator.of(context).pop(); // Go back to home to create new request
+      Navigator.of(context).pop();
     }
   }
 
@@ -142,36 +143,38 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: MidnightTheme.bgColor,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Center(
-              child: _matchFound ? _buildMatchProfile() : _buildScanningRadar(),
-            ),
-            Positioned(
-              top: 16,
-              left: 16,
-              child: IconButton(
-                onPressed: () async {
-                  await _requestService.cancelRequest(widget.requestId);
-                  await WalletService().releaseHeldFunds(50);
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                  }
-                },
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
-                    shape: BoxShape.circle,
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        await _cancelEverything();
+        if (context.mounted) Navigator.of(context).pop();
+      },
+      child: Scaffold(
+        backgroundColor: MidnightTheme.bgColor,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Center(
+                child: _matchFound ? _buildMatchProfile() : _buildScanningRadar(),
+              ),
+              Positioned(
+                top: 16,
+                left: 16,
+                child: IconButton(
+                  onPressed: _onSkip,
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.close, color: Colors.white, size: 20),
                   ),
-                  child: const Icon(Icons.close, color: Colors.white),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -187,20 +190,27 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
             _buildRipple(100),
             _buildRipple(150),
             _buildRipple(200),
-            const Icon(Icons.mic, size: 50, color: Colors.white),
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: MidnightTheme.primaryColor.withOpacity(0.2),
+                shape: BoxShape.circle,
+                border: Border.all(color: MidnightTheme.primaryColor, width: 2),
+              ),
+              child: const Icon(Icons.radar, color: MidnightTheme.primaryColor, size: 40),
+            ),
           ],
         ),
         const SizedBox(height: 48),
-        Text(
-          "Scanning for top-rated listeners...",
-          style: Theme.of(context).textTheme.bodyLarge,
+        const Text(
+          "Finding your listener...",
+          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
-        Text(
-          "Our AI is finding the best match for you...",
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+        const Text(
+          "Matching you with the best available support",
+          style: TextStyle(color: Colors.grey),
         ),
       ],
     );
@@ -214,94 +224,51 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text(
-            "Match Found!",
-            style: TextStyle(
-              color: MidnightTheme.primaryColor,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-            ),
+          StreamBuilder<HelpRequest?>(
+            stream: _requestService.streamRequestById(widget.requestId),
+            builder: (context, snapshot) {
+              final status = snapshot.data?.status ?? 'accepted';
+              String statusText = "Match Found!";
+              if (status == 'pending') statusText = "Listener found! Waiting...";
+              if (status == 'accepted') statusText = "Listener is ready!";
+              
+              return Text(
+                statusText,
+                style: const TextStyle(color: MidnightTheme.primaryColor, fontWeight: FontWeight.bold, fontSize: 18),
+              );
+            }
           ),
           const SizedBox(height: 32),
-
-          // Profile Image
           Container(
             padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: MidnightTheme.secondaryColor, width: 2),
-            ),
-            child: CircleAvatar(
-              radius: 60,
-              backgroundColor: MidnightTheme.surfaceColor,
-              child: const Icon(Icons.person, size: 60, color: Colors.white),
-            ),
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: MidnightTheme.secondaryColor, width: 2)),
+            child: CircleAvatar(radius: 60, backgroundColor: MidnightTheme.surfaceColor, child: const Icon(Icons.person, size: 60, color: Colors.white)),
           ),
           const SizedBox(height: 24),
-
-          // Name and Stats
-          Text(
-            _matchedListener!.name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text(_matchedListener!.name, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.star, color: Colors.amber, size: 16),
               const SizedBox(width: 4),
-              Text(
-                "${_matchedListener!.rating}",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                " (${_matchedListener!.totalCalls} sessions)",
-                style: const TextStyle(color: Colors.grey),
-              ),
+              Text("${_matchedListener!.rating == 0 ? 'New' : _matchedListener!.rating}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              if (_matchedListener!.totalCalls > 0) Text(" (${_matchedListener!.totalCalls} sessions)", style: const TextStyle(color: Colors.grey)),
             ],
           ),
           const SizedBox(height: 24),
-
-          // Bio / Tags
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: MidnightTheme.surfaceColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Text(
-              "\"${_matchedListener!.bio}\"",
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
+            decoration: BoxDecoration(color: MidnightTheme.surfaceColor, borderRadius: BorderRadius.circular(16)),
+            child: Text("\"${_matchedListener!.bio}\"", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic)),
           ),
-
           const Spacer(),
-
-          // Actions
           Row(
             children: [
               Expanded(
                 child: OutlinedButton(
                   onPressed: _onSkip,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red[300],
-                    side: BorderSide(color: Colors.red[300]!),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red[300], side: BorderSide(color: Colors.red[300]!), padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
                   child: const Text("Skip"),
                 ),
               ),
@@ -309,14 +276,7 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
               Expanded(
                 child: ElevatedButton(
                   onPressed: _onConnect,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: MidnightTheme.primaryColor,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: MidnightTheme.primaryColor, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
                   child: const Text("Connect"),
                 ),
               ),
@@ -338,10 +298,7 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
           height: size * 2,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(
-              color: MidnightTheme.primaryColor.withOpacity(0.5),
-              width: 2,
-            ),
+            border: Border.all(color: MidnightTheme.primaryColor.withOpacity(0.5), width: 2),
           ),
         ),
       ),

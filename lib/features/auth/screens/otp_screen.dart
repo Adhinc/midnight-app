@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import '../../../core/theme.dart';
 import '../../home/screens/home_screen.dart';
 import '../services/auth_repository.dart';
@@ -25,6 +26,41 @@ class _OtpScreenState extends State<OtpScreen> {
   final AuthRepository _authRepository = AuthRepository();
   final UserService _userService = UserService();
   bool _isLoading = false;
+  int _resendTimer = 30;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    setState(() => _resendTimer = 30);
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_resendTimer > 0) {
+        if (mounted) setState(() => _resendTimer--);
+      } else {
+        _timer?.cancel();
+      }
+    });
+  }
+
+  void _resendOTP() async {
+    _startTimer();
+    try {
+      await _authRepository.verifyPhoneNumber(
+        phoneNumber: widget.phoneNumber,
+        verificationCompleted: (_) {},
+        verificationFailed: (e) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message ?? "Failed"))),
+        codeSent: (id, _) => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("OTP Resent!"))),
+        codeAutoRetrievalTimeout: (_) {},
+      );
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
 
   void _verifyOTP() async {
     final smsCode = _otpController.text.trim();
@@ -44,11 +80,9 @@ class _OtpScreenState extends State<OtpScreen> {
       );
 
       if (user != null) {
-        // Check if user exists in Firestore
         final userDoc = await _userService.getUser(user.uid);
         
         if (userDoc != null) {
-          // Existing user: Login directly
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isLoggedIn', true);
           await prefs.setString('handle', userDoc.handle);
@@ -61,15 +95,15 @@ class _OtpScreenState extends State<OtpScreen> {
             );
           }
         } else {
-          // New user: Go to profile setup
           if (mounted) {
-            Navigator.of(context).pushReplacement(
+            Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(
                 builder: (_) => ProfileSetupScreen(
                   uid: user.uid,
                   phoneNumber: widget.phoneNumber,
                 ),
               ),
+              (route) => false,
             );
           }
         }
@@ -88,6 +122,7 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   void dispose() {
     _otpController.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
@@ -141,6 +176,18 @@ class _OtpScreenState extends State<OtpScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Text("Verify"),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Center(
+                  child: TextButton(
+                    onPressed: _resendTimer == 0 ? _resendOTP : null,
+                    child: Text(
+                      _resendTimer > 0 ? "Resend code in ${_resendTimer}s" : "Resend Code",
+                      style: TextStyle(
+                        color: _resendTimer > 0 ? Colors.grey : MidnightTheme.primaryColor,
+                      ),
+                    ),
                   ),
                 ),
               ],

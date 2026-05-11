@@ -33,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadUserRole() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _isListener = prefs.getBool('isListener') ?? false;
       _handle = prefs.getString('handle') ?? "User";
@@ -129,48 +130,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ? "Switch to Seeker Mode"
                   : "Switch to Listener Mode",
               onTap: () async {
-                final prefs = await SharedPreferences.getInstance();
-                // Toggle the state
-                final newStatus = !_isListener;
-                await prefs.setBool('isListener', newStatus);
-
-                // Update role in Firestore
                 final user = FirebaseAuth.instance.currentUser;
-                if (user != null) {
+                if (user == null) return;
+
+                final newStatus = !_isListener;
+
+                // 1. If switching to Listener, verify profile completion
+                if (newStatus) {
+                  final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+                  final data = userDoc.data() ?? {};
+                  final topics = data['topics'] as List? ?? [];
+                  final handle = data['handle'] as String? ?? '';
+
+                  if (handle.isEmpty || topics.isEmpty) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Please set a handle and at least one topic in Edit Profile first."),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                    return;
+                  }
+                }
+
+                // 2. Update Firestore FIRST (Source of Truth)
+                try {
                   await FirebaseFirestore.instance
                       .collection('users')
                       .doc(user.uid)
-                      .update({'role': newStatus ? 'listener' : 'seeker'});
+                      .update({
+                        'role': newStatus ? 'listener' : 'seeker',
+                        if (!newStatus) 'isOnline': false, // Turn off if switching back to seeker
+                      });
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("Failed to switch: $e"), backgroundColor: Colors.red),
+                    );
+                  }
+                  return;
                 }
+
+                // 3. Update Local Prefs
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('isListener', newStatus);
 
                 if (!mounted) return;
 
                 if (newStatus) {
-                  // Switching to Listener
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Switching to Listener Mode..."),
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Switching to Listener Mode...")));
                   Navigator.pushAndRemoveUntil(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const ListenerDashboardScreen(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const ListenerDashboardScreen()),
                     (route) => false,
                   );
                 } else {
-                  // Switching to Seeker
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Switching back to Seeker Mode..."),
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Switching back to Seeker Mode...")));
                   Navigator.pushAndRemoveUntil(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const HomeScreen(isListener: false),
-                    ),
+                    MaterialPageRoute(builder: (_) => const HomeScreen(isListener: false)),
                     (route) => false,
                   );
                 }
@@ -190,6 +210,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: "Logout",
               isDestructive: true,
               onTap: () async {
+                // 1. Set listener offline before logout
+                final user = FirebaseAuth.instance.currentUser;
+                if (user != null) {
+                  await FirebaseFirestore.instance.collection('users').doc(user.uid).update({'isOnline': false});
+                }
+                
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.clear(); // Clear all local data
                 await AuthRepository().signOut(); // Sign out of Firebase

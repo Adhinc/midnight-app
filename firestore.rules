@@ -2,63 +2,90 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
+    // Helper function for user role check
+    function isListener() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'listener';
+    }
+
     // User profile rules
     match /users/{userId} {
-      // Allow users to read their own data
-      allow read: if request.auth != null && request.auth.uid == userId;
+      // Allow users to read their own data, and allow public reads of basic listener info
+      allow read: if request.auth != null && (
+        request.auth.uid == userId || 
+        (resource.data.role == 'listener' && (
+          request.query.limit <= 50 || // For matching
+          request.auth != null // General profile view
+        ))
+      );
       
       // Allow users to create their document but with 0 balance
       allow create: if request.auth != null && request.auth.uid == userId 
-                    && request.resource.data.walletBalance == 0;
+                    && request.resource.data.walletBalance == 0
+                    && request.resource.data.heldBalance == 0;
                     
-      // Allow users to update their profile data
-      // Balance changes allowed but NEVER below zero (prevents double-charge exploits)
+      // Allow users to update their profile data (EXCLUDING financial fields)
       allow update: if request.auth != null && request.auth.uid == userId
-                    && request.resource.data.walletBalance >= 0;
+                    && request.resource.data.walletBalance == resource.data.walletBalance
+                    && request.resource.data.heldBalance == resource.data.heldBalance;
 
-      // Transactions subcollection
+      // Transactions subcollection (ADMIN ONLY CREATION)
       match /transactions/{transactionId} {
-        // Users can read their own transactions
         allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if false; // Only Cloud Functions / Admin SDK
+      }
 
-        // Users can create transaction records (for payments/earnings)
-        allow create: if request.auth != null && request.auth.uid == userId;
-
-        // Cannot update or delete existing transactions
-        allow update, delete: if false;
+      // Stay Connected subcollection
+      match /stay_connected/{listenerId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
     
     // Call requests rules
     match /requests/{requestId} {
-      // Read: only seeker or assigned listener can read their own requests
       allow read: if request.auth != null && (
         resource.data.seekerId == request.auth.uid ||
-        resource.data.listenerId == request.auth.uid
+        resource.data.listenerId == request.auth.uid ||
+        resource.data.status == 'open'
       );
 
-      // Listeners can read open requests (for matching) — status must be 'open'
-      allow read: if request.auth != null && resource.data.status == 'open';
-
-      // Create: only the seeker can create, and must set their own seekerId
       allow create: if request.auth != null
                     && request.resource.data.seekerId == request.auth.uid
                     && request.resource.data.status == 'open';
 
-      // Update: seeker, assigned listener, or listener claiming an open request
       allow update: if request.auth != null && (
-        resource.data.seekerId == request.auth.uid ||
-        resource.data.listenerId == request.auth.uid ||
-        // Allow listener to claim an open request (listenerId is currently null)
-        (resource.data.status == 'open' && resource.data.listenerId == null)
+        // Seeker can cancel or rate/tip (during ending)
+        (resource.data.seekerId == request.auth.uid && (
+           (request.resource.data.status == 'cancelled' && resource.data.status == 'open') ||
+           (resource.data.status == 'ending' && request.resource.data.status == 'completed')
+        )) ||
+        // Listener can claim an open request
+        (isListener() && resource.data.status == 'open' && resource.data.listenerId == null && 
+         request.resource.data.listenerId == request.auth.uid && request.resource.data.status == 'pending') ||
+        // Assigned listener can update status (connecting -> connected -> ending)
+        (resource.data.listenerId == request.auth.uid && (
+           (resource.data.status == 'pending' && request.resource.data.status == 'accepted') ||
+           (resource.data.status == 'accepted' && request.resource.data.status == 'connected') ||
+           (resource.data.status == 'connected' && request.resource.data.status == 'ending')
+        ))
       )
-      // Prevent changing ownership
       && request.resource.data.seekerId == resource.data.seekerId
-      // Prevent changing isPaid from client (only Cloud Functions should)
-      && request.resource.data.isPaid == resource.data.isPaid;
+      && request.resource.data.isPaid == resource.data.isPaid; // Protected
 
-      // No client-side deletes
       allow delete: if false;
+    }
+
+    // Reports collection
+    match /reports/{reportId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if false;
+    }
+
+    // Blocks collection
+    match /blocks/{blockId} {
+      allow read, write: if request.auth != null && (
+        blockId.split('_')[0] == request.auth.uid || 
+        resource.data.blockerId == request.auth.uid
+      );
     }
     
     // Default deny

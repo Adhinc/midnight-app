@@ -30,8 +30,13 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
     try {
       await _authRepository.verifyPhoneNumber(
         phoneNumber: phoneNumber,
-        verificationCompleted: (PhoneAuthCredential credential) {
-          // Auto-resolution handling can be done here if needed
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          try {
+            await FirebaseAuth.instance.signInWithCredential(credential);
+            // After auto-signin, the app will handle navigation via authStateChanges in main.dart
+          } catch (e) {
+            if (mounted) setState(() => _isLoading = false);
+          }
         },
         verificationFailed: (FirebaseAuthException e) {
           if (mounted) {
@@ -82,10 +87,10 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
       body: Container(
         padding: const EdgeInsets.all(24.0),
         decoration: BoxDecoration(
+          color: Colors.black, // Fallback color
           image: DecorationImage(
-            image: const NetworkImage(
-              "https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=1000&auto=format&fit=crop",
-            ),
+            image: const AssetImage('assets/images/login_bg.jpg'), // Local asset preferred
+            onError: (exception, stackTrace) => debugPrint("Background image load failed"),
             fit: BoxFit.cover,
             colorFilter: ColorFilter.mode(
               Colors.black.withOpacity(0.7),
@@ -120,8 +125,8 @@ class _PhoneLoginScreenState extends State<PhoneLoginScreen> {
                       if (value == null || value.isEmpty) {
                         return 'Please enter your phone number';
                       }
-                      if (value.length < 10) {
-                        return 'Please enter a valid phone number';
+                      if (value.length < 10 || !RegExp(r'^[0-9]+$').hasMatch(value)) {
+                        return 'Please enter a valid 10-digit number';
                       }
                       return null;
                     },

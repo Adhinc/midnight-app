@@ -1,5 +1,6 @@
 class SessionModel {
   final String id;
+  final String partnerId;
   final String partnerName;
   final DateTime date;
   final Duration duration;
@@ -9,6 +10,7 @@ class SessionModel {
 
   SessionModel({
     required this.id,
+    required this.partnerId,
     required this.partnerName,
     required this.date,
     required this.duration,

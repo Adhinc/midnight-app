@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/constants.dart';
@@ -103,7 +104,8 @@ class _CallScreenState extends State<CallScreen>
     };
 
     // Use a random int ID for now, or hash the user ID
-    final uid = DateTime.now().millisecondsSinceEpoch % 1000000;
+    // Use a hash of the Firebase UID to prevent millisecond collisions
+    final uid = FirebaseAuth.instance.currentUser?.uid.hashCode ?? 0;
     await _agoraService.joinChannel(channelId: widget.requestId, uid: uid);
   }
 
@@ -213,6 +215,14 @@ class _CallScreenState extends State<CallScreen>
 
   void _showTippingDialog(BuildContext context) async {
     if (_isEndingCall) return;
+    
+    // FETCH LIVE BALANCE before showing dialog
+    final liveUserDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(FirebaseAuth.instance.currentUser?.uid)
+        .get();
+    final liveBalance = (liveUserDoc.data()?['walletBalance'] ?? 0.0).toDouble();
+
     _isEndingCall = true;
 
     // First, end the call if not already ended
@@ -246,7 +256,7 @@ class _CallScreenState extends State<CallScreen>
                     ListenableBuilder(
                       listenable: WalletService(),
                       builder: (context, _) => Text(
-                        "Account Balance: ₹${WalletService().balance.toStringAsFixed(0)}",
+                        "Account Balance: ₹${liveBalance.toStringAsFixed(0)}",
                         style: const TextStyle(
                           color: Colors.grey,
                           fontSize: 14,
@@ -294,7 +304,7 @@ class _CallScreenState extends State<CallScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        if (WalletService().balance >= (AppConstants.sessionCost + 20))
+                        if (liveBalance >= (AppConstants.sessionCost + 20))
                           Flexible(
                             child: _TipOption(
                               amount: 20,
@@ -305,7 +315,7 @@ class _CallScreenState extends State<CallScreen>
                               },
                             ),
                           ),
-                        if (WalletService().balance >= (AppConstants.sessionCost + 50))
+                        if (liveBalance >= (AppConstants.sessionCost + 50))
                           Flexible(
                             child: _TipOption(
                               amount: 50,
@@ -317,7 +327,7 @@ class _CallScreenState extends State<CallScreen>
                               },
                             ),
                           ),
-                        if (WalletService().balance >= (AppConstants.sessionCost + 100))
+                        if (liveBalance >= (AppConstants.sessionCost + 100))
                           Flexible(
                             child: _TipOption(
                               amount: 100,
@@ -328,7 +338,7 @@ class _CallScreenState extends State<CallScreen>
                               },
                             ),
                           ),
-                        if (WalletService().balance < (AppConstants.sessionCost + 20))
+                        if (liveBalance < (AppConstants.sessionCost + 20))
                            const Flexible(
                             child: Padding(
                               padding: EdgeInsets.all(8.0),
@@ -640,7 +650,7 @@ class _CallScreenState extends State<CallScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey),),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -781,27 +791,6 @@ class _CallScreenState extends State<CallScreen>
                       letterSpacing: 2.0,
                     ),
                   ),
-                  const SizedBox(height: 16),
-
-                  // Debug log (remove after testing)
-                  if (_debugLog.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 24),
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _debugLog,
-                        style: const TextStyle(
-                          color: Colors.yellow,
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -872,7 +861,7 @@ class _CallScreenState extends State<CallScreen>
                       onTap: _toggleMute,
                       child: _buildOptionBtn(
                         _isMuted ? Icons.mic_off : Icons.mic,
-                        _isMuted ? "Unmuted" : "Mute",
+                        _isMuted ? "Muted" : "Mute",
                         _isMuted ? Colors.redAccent : Colors.white,
                         bgColor: _isMuted
                             ? Colors.red.withOpacity(0.15)

@@ -272,7 +272,7 @@ exports.generateAgoraToken = functions.https.onCall((data, context) => {
         );
     }
 
-    const uid = data.uid || 0; 
+    const uid = data.uid || 0;
     let role = RtcRole.PUBLISHER;
 
     // Token expires in 1 hour
@@ -317,12 +317,16 @@ exports.onCallStatusUpdate = functions.firestore
             const inSeconds = 130;
             const scheduleTime = (Date.now() / 1000) + inSeconds;
 
+            const secret = functions.config().system ? functions.config().system.task_secret : "dev_secret";
             const task = {
                 httpRequest: {
                     httpMethod: "POST",
                     url,
                     body: Buffer.from(JSON.stringify(payload)).toString("base64"),
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${secret}`
+                    },
                 },
                 scheduleTime: { seconds: scheduleTime },
             };
@@ -341,6 +345,14 @@ exports.onCallStatusUpdate = functions.firestore
  * Cloud Task handler to process abandoned calls.
  */
 exports.autoProcessPayment = functions.https.onRequest(async (req, res) => {
+    // 1. Security check: Only allow requests with the secret header
+    const authHeader = req.headers.authorization;
+    const secret = functions.config().system ? functions.config().system.task_secret : "dev_secret";
+    if (authHeader !== `Bearer ${secret}`) {
+        console.warn("Unauthorized attempt to hit autoProcessPayment");
+        return res.status(401).send("Unauthorized");
+    }
+
     const { requestId } = req.body;
     if (!requestId) return res.status(400).send("Missing requestId");
 
@@ -351,7 +363,7 @@ exports.autoProcessPayment = functions.https.onRequest(async (req, res) => {
             if (!requestDoc.exists) return;
 
             const data = requestDoc.data();
-            
+
             // IF call is still 'connected' or 'ending' AND not yet paid
             if ((data.status === "connected" || data.status === "ending") && !data.isPaid) {
                 console.log(`Auto-processing payment for abandoned request: ${requestId}`);
@@ -368,15 +380,28 @@ exports.autoProcessPayment = functions.https.onRequest(async (req, res) => {
                 const seekerDoc = await transaction.get(seekerRef);
                 const listenerDoc = await transaction.get(listenerRef);
 
-                // Debit Seeker
+                // Debit Seeker (ONLY if they have enough balance)
                 const currentSeekerBalance = seekerDoc.data().walletBalance || 0;
+                if (currentSeekerBalance < amount) {
+                    console.log(`Seeker ${seekerId} has insufficient balance (₹${currentSeekerBalance}) for auto-debit.`);
+                    // Mark as completed but UNPAID so admin can review
+                    transaction.update(requestRef, {
+                        status: "completed",
+                        isPaid: false,
+                        autoProcessed: true,
+                        paymentError: "insufficient_balance",
+                        completedAt: admin.firestore.FieldValue.serverTimestamp()
+                    });
+                    return;
+                }
+
                 transaction.update(seekerRef, {
-                    walletBalance: Math.max(0, currentSeekerBalance - amount)
+                    walletBalance: currentSeekerBalance - amount
                 });
 
                 // Credit Listener (assuming 60/40 split or fixed ₹30 for now)
                 const currentListenerBalance = listenerDoc.data().walletBalance || 0;
-                const payout = 30; 
+                const payout = 30;
                 transaction.update(listenerRef, {
                     walletBalance: currentListenerBalance + payout
                 });
