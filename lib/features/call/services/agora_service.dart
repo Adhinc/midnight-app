@@ -1,6 +1,7 @@
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:cloud_functions/cloud_functions.dart';
 import '../../../../core/constants.dart';
 
 class AgoraService {
@@ -146,6 +147,22 @@ class AgoraService {
     }
 
     try {
+      // Fetch Token from Firebase Cloud Functions
+      String token = '';
+      try {
+        if (onLog != null) onLog!("AgoraService: Requesting token from server...");
+        final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('generateAgoraToken');
+        final response = await callable.call({
+          'channelId': channelId,
+          'uid': uid,
+        });
+        token = response.data['token'] as String;
+        if (onLog != null) onLog!("AgoraService: Secure Token received!");
+      } catch (e) {
+        if (onLog != null) onLog!("AgoraService: CRITICAL - Failed to get secure token ($e). Voice connection aborted.");
+        return; // Abort connection completely if token fetch fails for maximum security
+      }
+
       // On web, enable audio here (after user gesture) to avoid getUserMedia block
       if (kIsWeb) {
         if (onLog != null) onLog!("AgoraService: Enabling audio (web)...");
@@ -155,7 +172,7 @@ class AgoraService {
       }
 
       await _engine!.joinChannel(
-        token: '', // Use null for App ID only mode
+        token: token,
         channelId: channelId,
         uid: uid,
         options: const ChannelMediaOptions(

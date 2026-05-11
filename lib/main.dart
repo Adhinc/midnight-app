@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/theme.dart';
 import 'features/auth/screens/phone_login_screen.dart';
 import 'features/home/screens/home_screen.dart';
+import 'core/services/notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
@@ -41,8 +42,16 @@ class MidnightApp extends StatefulWidget {
 }
 
 class _MidnightAppState extends State<MidnightApp> {
-  // We need to fetch prefs again if we removed main() await logic or just pass them through
-  // For safety, let's keep the main() logic but remove DevicePreview
+  @override
+  void initState() {
+    super.initState();
+    // Initialize push notifications when a user logs in
+    FirebaseAuth.instance.authStateChanges().listen((User? user) {
+      if (user != null) {
+        NotificationService().initialize();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -1,6 +1,7 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
+const { RtcTokenBuilder, RtcRole } = require("agora-access-token");
 
 admin.initializeApp();
 
@@ -138,3 +139,126 @@ exports.razorpayWebhook = functions.https.onRequest(async (req, res) => {
 
 // TODO: Deploy cleanupStaleCalls scheduled function before production
 // See DEV_NOTES.md for implementation details
+
+/**
+ * Push Notifications for New Help Requests
+ */
+exports.onNewHelpRequest = functions.firestore
+    .document("requests/{requestId}")
+    .onCreate(async (snap, context) => {
+        const requestData = snap.data();
+        const requestId = context.params.requestId;
+
+        // Only process open requests
+        if (requestData.status !== "open") return null;
+
+        const requestedTopic = requestData.topic;
+        const seekerHandle = requestData.seekerHandle || "Someone";
+
+        console.log(`New request for topic: ${requestedTopic}. Finding listeners...`);
+
+        // Find all listeners who are online and match the topic
+        const listenersSnapshot = await db.collection("users")
+            .where("role", "==", "listener")
+            .where("isOnline", "==", true)
+            .where("topics", "array-contains", requestedTopic)
+            .get();
+
+        if (listenersSnapshot.empty) {
+            console.log("No matching listeners found online for topic:", requestedTopic);
+            return null;
+        }
+
+        const tokens = [];
+        listenersSnapshot.forEach(doc => {
+            const userData = doc.data();
+            if (userData.fcmToken) {
+                tokens.push(userData.fcmToken);
+            }
+        });
+
+        if (tokens.length === 0) {
+            console.log("Found matching listeners, but none have FCM tokens.");
+            return null;
+        }
+
+        console.log(`Sending notifications to ${tokens.length} listeners.`);
+
+        const message = {
+            notification: {
+                title: "Midnight App: New Call Request 🌙",
+                body: `${seekerHandle} is looking to talk about ${requestedTopic} right now.`
+            },
+            data: {
+                requestId: requestId,
+                topic: requestedTopic
+            },
+            tokens: tokens
+        };
+
+        try {
+            const response = await admin.messaging().sendEachForMulticast(message);
+            console.log(response.successCount + " messages were sent successfully");
+            if (response.failureCount > 0) {
+                console.log(response.failureCount + " messages failed");
+            }
+        } catch (error) {
+            console.error("Error sending multicast message:", error);
+        }
+
+        return null;
+    });
+
+/**
+ * Generate Agora Token for Voice Calls
+ */
+exports.generateAgoraToken = functions.https.onCall((data, context) => {
+    // 1. Check if user is authenticated
+    if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated",
+            "The function must be called while authenticated."
+        );
+    }
+
+    // 2. Get App ID and Certificate from Firebase Config
+    const appId = functions.config().agora ? functions.config().agora.app_id : null;
+    const appCertificate = functions.config().agora ? functions.config().agora.app_certificate : null;
+
+    if (!appId || !appCertificate) {
+        console.error("Agora App ID or Certificate not configured.");
+        throw new functions.https.HttpsError(
+            "internal",
+            "Agora credentials not configured on the server."
+        );
+    }
+
+    // 3. Get requested channel ID and UID
+    const channelName = data.channelId;
+    if (!channelName || typeof channelName !== "string") {
+        throw new functions.https.HttpsError(
+            "invalid-argument",
+            "The function must be called with a 'channelId'."
+        );
+    }
+
+    const uid = data.uid || 0; 
+    let role = RtcRole.PUBLISHER;
+
+    // Token expires in 1 hour
+    const expirationTimeInSeconds = 3600;
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+
+    // 4. Generate token
+    const token = RtcTokenBuilder.buildTokenWithUid(
+        appId,
+        appCertificate,
+        channelName,
+        uid,
+        role,
+        privilegeExpiredTs
+    );
+
+    return { token: token };
+});
