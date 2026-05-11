@@ -32,9 +32,12 @@ class RequestService {
     }
   }
 
-  Stream<List<HelpRequest>> streamOpenRequests(List<String> allowedTopics) {
-    if (allowedTopics.isEmpty) {
-      // If the listener has no topics selected, they shouldn't see any requests
+  Stream<List<HelpRequest>> streamOpenRequests({
+    required List<String> allowedTopics,
+    required List<String> allowedLanguages,
+  }) {
+    if (allowedTopics.isEmpty || allowedLanguages.isEmpty) {
+      // If the listener has no topics or languages selected, they shouldn't see any requests
       return Stream.value([]);
     }
 
@@ -43,6 +46,7 @@ class RequestService {
     return _requestsCollection
         .where('status', isEqualTo: 'open')
         .where('topic', whereIn: allowedTopics)
+        .where('language', whereIn: allowedLanguages)
         .snapshots()
         .map((snapshot) {
           return snapshot.docs

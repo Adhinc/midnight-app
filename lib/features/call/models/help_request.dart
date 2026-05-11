@@ -7,6 +7,7 @@ class HelpRequest {
   final String
   status; // 'open', 'pending', 'accepted', 'connected', 'ending', 'completed', 'cancelled'
   final DateTime timestamp;
+  final String language;
   final String? listenerId;
   final String? listenerHandle;
   final int? rating; // 1-5 stars
@@ -22,6 +23,7 @@ class HelpRequest {
     required this.mood,
     required this.status,
     required this.timestamp,
+    this.language = 'English',
     this.listenerId,
     this.listenerHandle,
     this.rating,
@@ -40,6 +42,7 @@ class HelpRequest {
       'mood': mood,
       'status': status,
       'timestamp': timestamp.toIso8601String(),
+      'language': language,
       'listenerId': listenerId,
       'listenerHandle': listenerHandle,
       'rating': rating,
@@ -59,6 +62,7 @@ class HelpRequest {
       mood: map['mood'] ?? '',
       status: map['status'] ?? 'open',
       timestamp: DateTime.tryParse(map['timestamp'] ?? '') ?? DateTime.now(),
+      language: map['language'] ?? 'English',
       listenerId: map['listenerId'],
       listenerHandle: map['listenerHandle'],
       rating: map['rating'],

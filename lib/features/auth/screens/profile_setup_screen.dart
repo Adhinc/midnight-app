@@ -26,6 +26,18 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   bool _isListener = false;
   bool _isLoading = false;
   final UserService _userService = UserService();
+  List<String> _selectedLanguages = ['English'];
+  final List<String> _allLanguages = [
+    'English',
+    'Hindi',
+    'Malayalam',
+    'Tamil',
+    'Telugu',
+    'Kannada',
+    'Bengali',
+    'Marathi',
+    'Gujarati',
+  ];
 
   Future<void> _completeSetup() async {
     if (!_formKey.currentState!.validate()) return;
@@ -41,6 +53,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         role: _isListener ? 'listener' : 'seeker',
         isOnline: _isListener,
         topics: [],
+        languages: _selectedLanguages,
         createdAt: DateTime.now(),
       );
 
@@ -117,6 +130,46 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                         _isListener = val;
                       });
                     },
+                  ),
+                  const SizedBox(height: 32),
+                  const Text(
+                    "Languages you speak",
+                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _allLanguages.map((lang) {
+                      final isSelected = _selectedLanguages.contains(lang);
+                      return FilterChip(
+                        label: Text(lang),
+                        selected: isSelected,
+                        onSelected: (val) {
+                          setState(() {
+                            if (val) {
+                              _selectedLanguages.add(lang);
+                            } else {
+                              if (_selectedLanguages.length > 1) {
+                                _selectedLanguages.remove(lang);
+                              }
+                            }
+                          });
+                        },
+                        backgroundColor: MidnightTheme.surfaceColor,
+                        selectedColor: MidnightTheme.primaryColor.withOpacity(0.2),
+                        checkmarkColor: MidnightTheme.primaryColor,
+                        labelStyle: TextStyle(
+                          color: isSelected ? MidnightTheme.primaryColor : Colors.white,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(
+                            color: isSelected ? MidnightTheme.primaryColor : Colors.white.withOpacity(0.1),
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   ),
                   const SizedBox(height: 48),
 

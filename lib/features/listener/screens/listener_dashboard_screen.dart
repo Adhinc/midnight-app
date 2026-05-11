@@ -35,6 +35,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
   double _rating = 0.0;
 
   final Set<String> _selectedTopics = {"Lonely", "Relationships"};
+  List<String> _selectedLanguages = ["English"];
 
   final List<String> _availableTopics = [
     "Anxious",
@@ -65,6 +66,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
       if (user != null && mounted) {
         _loadStatus(user.uid);
         _loadStats(user.uid);
+        _loadUserLanguages(user.uid);
       }
     });
 
@@ -75,7 +77,10 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
   void _listenToOpenRequests() {
     _requestsSub?.cancel();
     _requestsSub = _requestService
-        .streamOpenRequests(_selectedTopics.toList())
+        .streamOpenRequests(
+          allowedTopics: _selectedTopics.toList(),
+          allowedLanguages: _selectedLanguages,
+        )
         .listen((requests) {
           if (mounted) {
             setState(() {
@@ -118,6 +123,20 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
       setState(() {
         _handle = prefs.getString('handle') ?? "User";
       });
+    }
+  }
+
+  Future<void> _loadUserLanguages(String uid) async {
+    try {
+      final userDoc = await _userService.getUser(uid);
+      if (mounted && userDoc != null) {
+        setState(() {
+          _selectedLanguages = userDoc.languages;
+        });
+        _listenToOpenRequests(); // Re-listen with correct languages
+      }
+    } catch (e) {
+      // Error fetching languages
     }
   }
 

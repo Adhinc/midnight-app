@@ -153,6 +153,7 @@ exports.onNewHelpRequest = functions.firestore
         if (requestData.status !== "open") return null;
 
         const requestedTopic = requestData.topic;
+        const requestedLanguage = requestData.language || "English";
         const seekerHandle = requestData.seekerHandle || "Someone";
         const targetListenerId = requestData.listenerId;
 
@@ -180,13 +181,14 @@ exports.onNewHelpRequest = functions.firestore
             return null;
         }
 
-        console.log(`New broadcast request for topic: ${requestedTopic}. Finding listeners...`);
+        console.log(`New broadcast for topic: ${requestedTopic} in ${requestedLanguage}. Finding listeners...`);
 
-        // Find all listeners who are online and match the topic
+        // Find all listeners who are online, match topic AND language
         const listenersSnapshot = await db.collection("users")
             .where("role", "==", "listener")
             .where("isOnline", "==", true)
             .where("topics", "array-contains", requestedTopic)
+            .where("languages", "array-contains", requestedLanguage)
             .get();
 
         if (listenersSnapshot.empty) {

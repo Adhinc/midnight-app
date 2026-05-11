@@ -22,6 +22,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isUploadingPic = false;
+  List<String> _selectedLanguages = [];
+  final List<String> _allLanguages = [
+    'English',
+    'Hindi',
+    'Malayalam',
+    'Tamil',
+    'Telugu',
+    'Kannada',
+    'Bengali',
+    'Marathi',
+    'Gujarati',
+  ];
 
   @override
   void initState() {
@@ -42,6 +54,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _nameController.text = data['handle'] ?? '';
         _bioController.text = data['bio'] ?? '';
         _profilePicUrl = data['profilePicUrl'];
+        _selectedLanguages = List<String>.from(data['languages'] ?? ['English']);
       }
     } catch (e) {
       final prefs = await SharedPreferences.getInstance();
@@ -130,6 +143,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       await FirebaseFirestore.instance.collection('users').doc(uid).update({
         'handle': _nameController.text.trim(),
         'bio': _bioController.text.trim(),
+        'languages': _selectedLanguages,
       });
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('handle', _nameController.text.trim());
@@ -252,6 +266,49 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   _buildTextField("Username / Handle", _nameController, maxLength: 20, validator: Validators.handle),
                   const SizedBox(height: 24),
                   _buildTextField("Bio", _bioController, maxLines: 4, maxLength: 200, validator: Validators.bio),
+                  const SizedBox(height: 32),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Spoken Languages",
+                      style: TextStyle(color: Colors.grey, fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _allLanguages.map((lang) {
+                      final isSelected = _selectedLanguages.contains(lang);
+                      return FilterChip(
+                        label: Text(lang),
+                        selected: isSelected,
+                        onSelected: (val) {
+                          setState(() {
+                            if (val) {
+                              _selectedLanguages.add(lang);
+                            } else {
+                              if (_selectedLanguages.length > 1) {
+                                _selectedLanguages.remove(lang);
+                              }
+                            }
+                          });
+                        },
+                        backgroundColor: MidnightTheme.surfaceColor,
+                        selectedColor: MidnightTheme.primaryColor.withOpacity(0.2),
+                        checkmarkColor: MidnightTheme.primaryColor,
+                        labelStyle: TextStyle(
+                          color: isSelected ? MidnightTheme.primaryColor : Colors.white,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(
+                            color: isSelected ? MidnightTheme.primaryColor : Colors.white.withOpacity(0.1),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ],
               ),
               ),

@@ -8,6 +8,7 @@ class UserModel {
   final double rating;
 
   final String? fcmToken;
+  final List<String> languages;
   final DateTime createdAt;
 
   UserModel({
@@ -18,7 +19,8 @@ class UserModel {
     this.isOnline = false,
     this.topics = const [],
     this.rating = 0.0,
-    this.fcmToken,
+     this.fcmToken,
+    this.languages = const ['English'],
     required this.createdAt,
   });
 
@@ -32,7 +34,8 @@ class UserModel {
       'isOnline': isOnline,
       'topics': topics,
       'rating': rating,
-      'fcmToken': fcmToken,
+       'fcmToken': fcmToken,
+      'languages': languages,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -47,7 +50,8 @@ class UserModel {
       isOnline: map['isOnline'] ?? false,
       topics: List<String>.from(map['topics'] ?? []),
       rating: (map['rating'] ?? 0.0).toDouble(),
-      fcmToken: map['fcmToken'],
+       fcmToken: map['fcmToken'],
+      languages: List<String>.from(map['languages'] ?? ['English']),
       createdAt: DateTime.tryParse(map['createdAt'] ?? '') ?? DateTime.now(),
     );
   }

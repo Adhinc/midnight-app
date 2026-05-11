@@ -371,6 +371,7 @@ class _ExplorePageState extends State<_ExplorePage> {
                           mood: selectedMood!,
                           status: 'open',
                           timestamp: DateTime.now(),
+                          language: List<String>.from(userDoc.data()?['languages'] ?? ['English'])[0],
                         );
 
                         final requestId = await _requestService.createRequest(
@@ -480,6 +481,7 @@ class _ExplorePageState extends State<_ExplorePage> {
         status: 'open',
         timestamp: DateTime.now(),
         listenerId: listener['id'], // Target this specific listener
+        language: listener['language'] ?? 'English',
       );
 
       final requestId = await _requestService.createRequest(request);
@@ -635,6 +637,7 @@ class _ConnectedPageState extends State<_ConnectedPage> {
         status: 'open',
         timestamp: DateTime.now(),
         listenerId: listener['id'],
+        language: listener['language'] ?? 'English',
       );
 
       final requestId = await _requestService.createRequest(request);
