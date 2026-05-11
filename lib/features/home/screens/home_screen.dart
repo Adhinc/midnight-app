@@ -11,6 +11,7 @@ import '../../call/models/help_request.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../wallet/services/wallet_service.dart';
+import '../../call/services/connection_service.dart';
 class HomeScreen extends StatefulWidget {
   final bool isListener;
   const HomeScreen({super.key, required this.isListener});
@@ -20,17 +21,22 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String? selectedMood;
+  int _currentIndex = 0;
   String _handle = "User";
-  final _requestService = RequestService();
   final _auth = FirebaseAuth.instance;
   final _walletService = WalletService();
-  bool _isProcessing = false;
+  
+  // List of pages for navigation
+  late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
     _loadHandle();
+    _pages = [
+      const _ExplorePage(),
+      const _ConnectedPage(),
+    ];
   }
 
   Future<void> _loadHandle() async {
@@ -52,10 +58,10 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text(
-          "Hi, $_handle",
+          _currentIndex == 0 ? "Hi, $_handle" : "Stay Connected",
           style: Theme.of(
             context,
-          ).textTheme.titleMedium?.copyWith(color: Colors.white),
+          ).textTheme.titleMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         leading: IconButton(
           icon: const Icon(Icons.person, color: Colors.white),
@@ -115,11 +121,68 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: _pages[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) => setState(() => _currentIndex = index),
+        backgroundColor: MidnightTheme.surfaceColor,
+        selectedItemColor: MidnightTheme.primaryColor,
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.explore_outlined),
+            activeIcon: Icon(Icons.explore),
+            label: "Explore",
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.favorite_border),
+            activeIcon: Icon(Icons.favorite),
+            label: "Connected",
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExplorePage extends StatefulWidget {
+  const _ExplorePage();
+
+  @override
+  State<_ExplorePage> createState() => _ExplorePageState();
+}
+
+class _ExplorePageState extends State<_ExplorePage> {
+  String? selectedMood;
+  final _requestService = RequestService();
+  final _auth = FirebaseAuth.instance;
+  final _walletService = WalletService();
+  bool _isProcessing = false;
+  String _handle = "User";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHandle();
+  }
+
+  Future<void> _loadHandle() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _handle = prefs.getString('handle') ?? "User";
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
             Text(
               "How are you feeling?",
               style: Theme.of(context).textTheme.displayMedium,
@@ -169,9 +232,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-
-            const SizedBox(height: 24),
-
 
             const Spacer(),
 
@@ -383,6 +443,277 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const Spacer(),
+          ],
+        ),
+      ),
+    );
+  }
+  void _startTargetedCall(Map<String, dynamic> listener) async {
+    if (_isProcessing) return;
+    
+    // Validate balance
+    if (_walletService.balance < AppConstants.sessionCost) {
+       ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Insufficient balance to call this listener.")),
+      );
+      return;
+    }
+
+    if (!listener['isOnline']) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("${listener['handle']} is currently offline.")),
+      );
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+
+      final request = HelpRequest(
+        id: '',
+        seekerId: user.uid,
+        seekerHandle: _handle,
+        topic: (listener['topics'] as List).isNotEmpty ? listener['topics'][0] : "General",
+        mood: "Reconnecting",
+        status: 'open',
+        timestamp: DateTime.now(),
+        listenerId: listener['id'], // Target this specific listener
+      );
+
+      final requestId = await _requestService.createRequest(request);
+
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MatchRadarScreen(requestId: requestId),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+}
+
+class _ConnectedPage extends StatefulWidget {
+  const _ConnectedPage();
+
+  @override
+  State<_ConnectedPage> createState() => _ConnectedPageState();
+}
+
+class _ConnectedPageState extends State<_ConnectedPage> {
+  final _walletService = WalletService();
+  final _requestService = RequestService();
+  final _auth = FirebaseAuth.instance;
+  bool _isProcessing = false;
+  String _handle = "User";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHandle();
+  }
+
+  Future<void> _loadHandle() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _handle = prefs.getString('handle') ?? "User";
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Your Listeners",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "People you've connected with before.",
+            style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: ConnectionService().streamStayConnectedListeners(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator(color: MidnightTheme.primaryColor));
+                }
+
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.favorite_border, size: 64, color: Colors.white.withOpacity(0.1)),
+                        const SizedBox(height: 16),
+                        Text(
+                          "No listeners saved yet.",
+                          style: TextStyle(color: Colors.white.withOpacity(0.3)),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          "Add listeners after a call or from your history.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                final listeners = snapshot.data!;
+                return ListView.builder(
+                  itemCount: listeners.length,
+                  itemBuilder: (context, index) {
+                    final listener = listeners[index];
+                    return _FavoriteListenerTile(
+                      handle: listener['handle'],
+                      isOnline: listener['isOnline'],
+                      onTap: () => _startTargetedCall(listener),
+                      onRemove: () => ConnectionService().removeFromStayConnected(listener['id']),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startTargetedCall(Map<String, dynamic> listener) async {
+    if (_isProcessing) return;
+    
+    if (_walletService.balance < AppConstants.sessionCost) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Insufficient balance.")),
+      );
+      return;
+    }
+
+    if (!listener['isOnline']) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("${listener['handle']} is offline.")),
+      );
+      return;
+    }
+
+    setState(() => _isProcessing = true);
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+
+      final request = HelpRequest(
+        id: '',
+        seekerId: user.uid,
+        seekerHandle: _handle,
+        topic: (listener['topics'] as List).isNotEmpty ? listener['topics'][0] : "General",
+        mood: "Reconnecting",
+        status: 'open',
+        timestamp: DateTime.now(),
+        listenerId: listener['id'],
+      );
+
+      final requestId = await _requestService.createRequest(request);
+
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => MatchRadarScreen(requestId: requestId)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+}
+
+class _FavoriteListenerTile extends StatelessWidget {
+  final String handle;
+  final bool isOnline;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  const _FavoriteListenerTile({
+    required this.handle,
+    required this.isOnline,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: MidnightTheme.surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Stack(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.white.withOpacity(0.1),
+              child: const Icon(Icons.person, color: Colors.white),
+            ),
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: isOnline ? Colors.green : Colors.grey,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: MidnightTheme.surfaceColor, width: 2),
+                ),
+              ),
+            ),
+          ],
+        ),
+        title: Text(
+          handle,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          isOnline ? "Available to talk" : "Offline",
+          style: TextStyle(color: isOnline ? Colors.green : Colors.grey, fontSize: 12),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isOnline)
+              const Icon(Icons.phone_in_talk, color: MidnightTheme.primaryColor),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+              onPressed: onRemove,
+            ),
           ],
         ),
       ),

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../../core/theme.dart';
 import '../../profile/models/session_model.dart';
 import '../../profile/services/session_service.dart';
+import '../../call/services/connection_service.dart';
 
 class SessionHistoryScreen extends StatefulWidget {
   const SessionHistoryScreen({super.key});
@@ -101,9 +102,28 @@ class _SessionHistoryScreenState extends State<SessionHistoryScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                "$amountPrefix₹${session.amount.toStringAsFixed(0)}", 
-                style: TextStyle(color: amountColor, fontWeight: FontWeight.bold)
+              Row(
+                children: [
+                  if (!session.isListenerSession)
+                    IconButton(
+                      icon: const Icon(Icons.favorite_border, color: MidnightTheme.primaryColor, size: 20),
+                      onPressed: () async {
+                        await ConnectionService().addToStayConnected(
+                          listenerId: session.partnerId,
+                          listenerHandle: session.partnerName,
+                        );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("${session.partnerName} added to Stay Connected")),
+                          );
+                        }
+                      },
+                    ),
+                  Text(
+                    "$amountPrefix₹${session.amount.toStringAsFixed(0)}", 
+                    style: TextStyle(color: amountColor, fontWeight: FontWeight.bold)
+                  ),
+                ],
               ),
               const SizedBox(height: 4),
               Row(

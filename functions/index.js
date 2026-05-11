@@ -154,8 +154,33 @@ exports.onNewHelpRequest = functions.firestore
 
         const requestedTopic = requestData.topic;
         const seekerHandle = requestData.seekerHandle || "Someone";
+        const targetListenerId = requestData.listenerId;
 
-        console.log(`New request for topic: ${requestedTopic}. Finding listeners...`);
+        if (targetListenerId) {
+            console.log(`Targeted request for listener: ${targetListenerId}`);
+            const listenerDoc = await db.collection("users").doc(targetListenerId).get();
+            if (!listenerDoc.exists || !listenerDoc.data().isOnline) {
+                console.log("Targeted listener is offline or doesn't exist.");
+                return null;
+            }
+            const token = listenerDoc.data().fcmToken;
+            if (!token) return null;
+
+            const message = {
+                notification: {
+                    title: "Midnight App: Someone wants to talk again! 🌙",
+                    body: `${seekerHandle} would like to speak with you specifically.`
+                },
+                data: { requestId, isTargeted: "true" },
+                token: token
+            };
+
+            await admin.messaging().send(message);
+            console.log("Targeted notification sent.");
+            return null;
+        }
+
+        console.log(`New broadcast request for topic: ${requestedTopic}. Finding listeners...`);
 
         // Find all listeners who are online and match the topic
         const listenersSnapshot = await db.collection("users")
@@ -182,7 +207,7 @@ exports.onNewHelpRequest = functions.firestore
             return null;
         }
 
-        console.log(`Sending notifications to ${tokens.length} listeners.`);
+        console.log(`Sending broadcast notifications to ${tokens.length} listeners.`);
 
         const message = {
             notification: {

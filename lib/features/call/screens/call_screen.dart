@@ -9,6 +9,7 @@ import '../../wallet/services/wallet_service.dart';
 import '../../profile/services/moderation_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../call/services/agora_service.dart';
+import '../services/connection_service.dart';
 
 class CallScreen extends StatefulWidget {
   final String requestId;
@@ -346,7 +347,59 @@ class _CallScreenState extends State<CallScreen>
 
       // Return to previous screen
       if (mounted) {
-        Navigator.of(context).pop();
+        // Show follow-up "Stay Connected" dialog
+        final request = await _requestService.getRequestById(widget.requestId);
+        final otherUserId = (request?.seekerId == FirebaseAuth.instance.currentUser?.uid)
+            ? request?.listenerId
+            : request?.seekerId;
+        final otherUserName = (request?.seekerId == FirebaseAuth.instance.currentUser?.uid)
+            ? request?.listenerHandle
+            : request?.seekerHandle;
+
+        if (otherUserId != null && otherUserName != null && mounted) {
+          final isAlreadyConnected = await ConnectionService().isConnected(otherUserId);
+          if (!isAlreadyConnected && mounted) {
+            final wantToStayConnected = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: MidnightTheme.surfaceColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                title: const Text("Stay Connected?", style: TextStyle(color: Colors.white)),
+                content: Text(
+                  "Would you like to add $otherUserName to your 'Stay Connected' list to talk again later?",
+                  style: const TextStyle(color: Colors.grey),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text("Maybe Later", style: TextStyle(color: Colors.grey)),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(backgroundColor: MidnightTheme.primaryColor),
+                    child: const Text("Yes, Add Them", style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              ),
+            );
+
+            if (wantToStayConnected == true && mounted) {
+              await ConnectionService().addToStayConnected(
+                listenerId: otherUserId,
+                listenerHandle: otherUserName,
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("$otherUserName added to your 'Stay Connected' list.")),
+                );
+              }
+            }
+          }
+        }
+        
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
       }
     }
   }
