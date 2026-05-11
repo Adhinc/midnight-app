@@ -234,6 +234,53 @@ class WalletService extends ChangeNotifier {
     }
   }
 
+  // Hold funds when a request is created
+  Future<bool> holdFunds(double amount) async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      bool success = false;
+      await _firestore.runTransaction((transaction) async {
+        final userRef = _firestore.collection('users').doc(user.uid);
+        final userDoc = await transaction.get(userRef);
+
+        if (userDoc.exists) {
+          final balance = (userDoc.data()?['walletBalance'] ?? 0.0).toDouble();
+          final held = (userDoc.data()?['heldBalance'] ?? 0.0).toDouble();
+
+          if (balance - held >= amount) {
+            transaction.update(userRef, {'heldBalance': held + amount});
+            success = true;
+          }
+        }
+      });
+      return success;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Release held funds (e.g. if request is cancelled)
+  Future<void> releaseHeldFunds(double amount) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await _firestore.runTransaction((transaction) async {
+        final userRef = _firestore.collection('users').doc(user.uid);
+        final userDoc = await transaction.get(userRef);
+
+        if (userDoc.exists) {
+          final held = (userDoc.data()?['heldBalance'] ?? 0.0).toDouble();
+          transaction.update(userRef, {'heldBalance': Math.max(0.0, held - amount)});
+        }
+      });
+    } catch (e) {
+      debugPrint('Error releasing funds: $e');
+    }
+  }
+
   // Make Payment (for Session)
   // Returns true if payment was successful, false if insufficient balance.
   Future<bool> makePayment(double amount, String description) async {
@@ -310,9 +357,11 @@ class WalletService extends ChangeNotifier {
             (userDoc.data()?['walletBalance'] ?? 0.0).toDouble();
         if (currentBalance < amount) return;
 
-        // Deduct balance
+        // Deduct balance AND Release Hold
+        final held = (userDoc.data()?['heldBalance'] ?? 0.0).toDouble();
         transaction.update(userRef, {
           'walletBalance': currentBalance - amount,
+          'heldBalance': (held - AppConstants.sessionCost).clamp(0.0, double.infinity),
         });
 
         // Record transaction

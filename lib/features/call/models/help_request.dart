@@ -13,6 +13,7 @@ class HelpRequest {
   final int? rating; // 1-5 stars
   final int? tip; // Tip amount in rupees
   final DateTime? connectedAt;
+  final DateTime? lastActive;
   final bool isPaid; // Whether the listener has been paid for this session
 
   HelpRequest({
@@ -29,6 +30,7 @@ class HelpRequest {
     this.rating,
     this.tip,
     this.connectedAt,
+    this.lastActive,
     this.isPaid = false,
   });
 
@@ -48,6 +50,7 @@ class HelpRequest {
       'rating': rating,
       'tip': tip,
       'connectedAt': connectedAt?.toIso8601String(),
+      'lastActive': lastActive?.toIso8601String(),
       'isPaid': isPaid,
     };
   }
@@ -69,6 +72,9 @@ class HelpRequest {
       tip: map['tip'],
       connectedAt: map['connectedAt'] != null
           ? DateTime.tryParse(map['connectedAt'])
+          : null,
+      lastActive: map['lastActive'] != null
+          ? DateTime.tryParse(map['lastActive'])
           : null,
       isPaid: map['isPaid'] ?? false,
     );

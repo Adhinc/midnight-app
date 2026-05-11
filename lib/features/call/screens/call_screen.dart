@@ -25,6 +25,7 @@ class _CallScreenState extends State<CallScreen>
   final RequestService _requestService = RequestService();
   final ModerationService _moderationService = ModerationService(); // New
   StreamSubscription<HelpRequest?>? _requestSubscription;
+  late final AppLifecycleListener _lifecycleListener;
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -35,6 +36,8 @@ class _CallScreenState extends State<CallScreen>
   Duration _duration = Duration.zero;
   bool _isEndingCall = false;
   bool _paymentProcessed = false;
+  Timer? _heartbeatTimer;
+  bool _isOtherUserDisconnected = false;
 
   @override
   void initState() {
@@ -42,6 +45,7 @@ class _CallScreenState extends State<CallScreen>
     _startTimer();
     _listenForCallEnd();
     _initAgora();
+    _startHeartbeat();
 
     _pulseController = AnimationController(
       vsync: this,
@@ -50,6 +54,12 @@ class _CallScreenState extends State<CallScreen>
 
     _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    // Add lifecycle listener for last-resort status update
+    _lifecycleListener = AppLifecycleListener(
+      onDetach: _onAppDetached,
+      onPause: _onAppPaused,
     );
   }
 
@@ -100,6 +110,7 @@ class _CallScreenState extends State<CallScreen>
   @override
   void dispose() {
     _timer?.cancel();
+    _heartbeatTimer?.cancel();
     _pulseController.dispose();
     _requestSubscription?.cancel();
     // Clear Agora callbacks to prevent firing after dispose
@@ -109,6 +120,7 @@ class _CallScreenState extends State<CallScreen>
     _agoraService.onUserJoined = null;
     _agoraService.onUserOffline = null;
     _agoraService.dispose();
+    _lifecycleListener.dispose();
     super.dispose();
   }
 
@@ -123,17 +135,48 @@ class _CallScreenState extends State<CallScreen>
   }
 
   void _listenForCallEnd() {
-    // Listen for when Listener ends call (status becomes 'ending')
+    // Listen for when Listener ends call (status becomes 'ending') or internet is lost (heartbeat)
     _requestSubscription = _requestService
         .streamRequestById(widget.requestId)
         .listen((request) {
-          if (request != null && request.status == 'ending' && mounted) {
-            // Listener ended call! Show rating dialog
+          if (request == null) return;
+
+          // ── Connection Loss Check (5s) ──
+          if (request.status == 'connected' && request.lastActive != null) {
+            final now = DateTime.now();
+            final difference = now.difference(request.lastActive!).inSeconds.abs();
+            
+            final isDisconnected = difference > 5;
+            if (isDisconnected != _isOtherUserDisconnected && mounted) {
+              setState(() => _isOtherUserDisconnected = isDisconnected);
+            }
+          } else if (_isOtherUserDisconnected && mounted) {
+             // Reset if we are no longer in connected state or lastActive is null (fresh start)
+             setState(() => _isOtherUserDisconnected = false);
+          }
+
+          if (request.status == 'ending' && mounted) {
             if (!_isEndingCall) {
               _showTippingDialog(context);
             }
           }
         });
+  }
+
+  void _startHeartbeat() {
+    // Update our presence every 3 seconds for fast detection
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+       if (_isEndingCall || !mounted) return;
+       
+       try {
+         await FirebaseFirestore.instance
+             .collection('requests')
+             .doc(widget.requestId)
+             .update({'lastActive': FieldValue.serverTimestamp()});
+       } catch (e) {
+         debugPrint("Heartbeat failed: $e");
+       }
+    });
   }
 
   void _showEndCallConfirmation(BuildContext context) {
@@ -251,37 +294,51 @@ class _CallScreenState extends State<CallScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        Flexible(
-                          child: _TipOption(
-                            amount: 20,
-                            onTap: () {
-                              Navigator.of(
-                                dialogContext,
-                              ).pop({'rating': localRating, 'tip': 20});
-                            },
+                        if (WalletService().balance >= (AppConstants.sessionCost + 20))
+                          Flexible(
+                            child: _TipOption(
+                              amount: 20,
+                              onTap: () {
+                                Navigator.of(
+                                  dialogContext,
+                                ).pop({'rating': localRating, 'tip': 20});
+                              },
+                            ),
                           ),
-                        ),
-                        Flexible(
-                          child: _TipOption(
-                            amount: 50,
-                            isPrimary: true,
-                            onTap: () {
-                              Navigator.of(
-                                dialogContext,
-                              ).pop({'rating': localRating, 'tip': 50});
-                            },
+                        if (WalletService().balance >= (AppConstants.sessionCost + 50))
+                          Flexible(
+                            child: _TipOption(
+                              amount: 50,
+                              isPrimary: true,
+                              onTap: () {
+                                Navigator.of(
+                                  dialogContext,
+                                ).pop({'rating': localRating, 'tip': 50});
+                              },
+                            ),
                           ),
-                        ),
-                        Flexible(
-                          child: _TipOption(
-                            amount: 100,
-                            onTap: () {
-                              Navigator.of(
-                                dialogContext,
-                              ).pop({'rating': localRating, 'tip': 100});
-                            },
+                        if (WalletService().balance >= (AppConstants.sessionCost + 100))
+                          Flexible(
+                            child: _TipOption(
+                              amount: 100,
+                              onTap: () {
+                                Navigator.of(
+                                  dialogContext,
+                                ).pop({'rating': localRating, 'tip': 100});
+                              },
+                            ),
                           ),
-                        ),
+                        if (WalletService().balance < (AppConstants.sessionCost + 20))
+                           const Flexible(
+                            child: Padding(
+                              padding: EdgeInsets.all(8.0),
+                              child: Text(
+                                "Add funds to tip your listener",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey, fontSize: 12),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -750,6 +807,40 @@ class _CallScreenState extends State<CallScreen>
               ),
             ),
 
+            // ── Connection Loss Overlay ──
+            if (_isOtherUserDisconnected)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withOpacity(0.8),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.wifi_off, color: Colors.orange, size: 64),
+                        const SizedBox(height: 24),
+                        const Text(
+                          "Connection Lost",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          "Reconnecting... Please stay on the line.",
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        const SizedBox(height: 32),
+                        const CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
             // Bottom Controls
             Align(
               alignment: Alignment.bottomCenter,
@@ -850,6 +941,17 @@ class _CallScreenState extends State<CallScreen>
     String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
     String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
     return "$twoDigitMinutes:$twoDigitSeconds";
+  }
+
+  void _onAppPaused() {
+    // Optional: Log pause
+  }
+
+  void _onAppDetached() {
+    // Last-ditch effort to mark status as ending if user kills app
+    if (!_paymentProcessed && !_isEndingCall) {
+      _requestService.endCall(widget.requestId);
+    }
   }
 }
 

@@ -3,6 +3,9 @@ const admin = require("firebase-admin");
 const crypto = require("crypto");
 const { RtcTokenBuilder, RtcRole } = require("agora-access-token");
 
+const { CloudTasksClient } = require("@google-cloud/tasks");
+const tasksClient = new CloudTasksClient();
+
 admin.initializeApp();
 
 const db = admin.firestore();
@@ -288,4 +291,127 @@ exports.generateAgoraToken = functions.https.onCall((data, context) => {
     );
 
     return { token: token };
+});
+
+/**
+ * Handle call status changes to schedule payment safety checks.
+ */
+exports.onCallStatusUpdate = functions.firestore
+    .document("requests/{requestId}")
+    .onUpdate(async (change, context) => {
+        const newData = change.after.data();
+        const oldData = change.before.data();
+        const requestId = context.params.requestId;
+
+        // If status just changed to 'connected', schedule a safety check in 2 minutes
+        if (newData.status === "connected" && oldData.status !== "connected") {
+            const project = JSON.parse(process.env.FIREBASE_CONFIG).projectId;
+            const location = "us-central1"; // Update to your region if different
+            const queue = "payment-safety-guard";
+            const queuePath = tasksClient.queuePath(project, location, queue);
+
+            const url = `https://${location}-${project}.cloudfunctions.net/autoProcessPayment`;
+            const payload = { requestId };
+
+            // Schedule for 130 seconds from now (2 mins + 10s buffer)
+            const inSeconds = 130;
+            const scheduleTime = (Date.now() / 1000) + inSeconds;
+
+            const task = {
+                httpRequest: {
+                    httpMethod: "POST",
+                    url,
+                    body: Buffer.from(JSON.stringify(payload)).toString("base64"),
+                    headers: { "Content-Type": "application/json" },
+                },
+                scheduleTime: { seconds: scheduleTime },
+            };
+
+            console.log(`Scheduling auto-payment check for request ${requestId} in ${inSeconds}s`);
+            try {
+                await tasksClient.createTask({ parent: queuePath, task });
+            } catch (error) {
+                console.error("Error scheduling Cloud Task:", error);
+            }
+        }
+        return null;
+    });
+
+/**
+ * Cloud Task handler to process abandoned calls.
+ */
+exports.autoProcessPayment = functions.https.onRequest(async (req, res) => {
+    const { requestId } = req.body;
+    if (!requestId) return res.status(400).send("Missing requestId");
+
+    try {
+        const requestRef = db.collection("requests").doc(requestId);
+        await db.runTransaction(async (transaction) => {
+            const requestDoc = await transaction.get(requestRef);
+            if (!requestDoc.exists) return;
+
+            const data = requestDoc.data();
+            
+            // IF call is still 'connected' or 'ending' AND not yet paid
+            if ((data.status === "connected" || data.status === "ending") && !data.isPaid) {
+                console.log(`Auto-processing payment for abandoned request: ${requestId}`);
+
+                const seekerId = data.seekerId;
+                const listenerId = data.listenerId;
+                const amount = 50; // Base session cost
+
+                if (!seekerId || !listenerId) return;
+
+                const seekerRef = db.collection("users").doc(seekerId);
+                const listenerRef = db.collection("users").doc(listenerId);
+
+                const seekerDoc = await transaction.get(seekerRef);
+                const listenerDoc = await transaction.get(listenerRef);
+
+                // Debit Seeker
+                const currentSeekerBalance = seekerDoc.data().walletBalance || 0;
+                transaction.update(seekerRef, {
+                    walletBalance: Math.max(0, currentSeekerBalance - amount)
+                });
+
+                // Credit Listener (assuming 60/40 split or fixed ₹30 for now)
+                const currentListenerBalance = listenerDoc.data().walletBalance || 0;
+                const payout = 30; 
+                transaction.update(listenerRef, {
+                    walletBalance: currentListenerBalance + payout
+                });
+
+                // Mark as completed and paid
+                transaction.update(requestRef, {
+                    status: "completed",
+                    isPaid: true,
+                    autoProcessed: true,
+                    completedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+
+                // Record transactions
+                const seekerTxRef = seekerRef.collection("transactions").doc();
+                transaction.set(seekerTxRef, {
+                    title: "Session Payment (Auto)",
+                    amount: amount,
+                    date: admin.firestore.FieldValue.serverTimestamp(),
+                    isCredit: false,
+                    requestId: requestId
+                });
+
+                const listenerTxRef = listenerRef.collection("transactions").doc();
+                transaction.set(listenerTxRef, {
+                    title: "Session Earning (Auto)",
+                    amount: payout,
+                    date: admin.firestore.FieldValue.serverTimestamp(),
+                    isCredit: true,
+                    requestId: requestId
+                });
+            }
+        });
+        return res.status(200).send("Processed");
+    } catch (error) {
+        console.error("Auto-payment processing failed:", error);
+        return res.status(500).send("Internal Server Error");
+    }
 });

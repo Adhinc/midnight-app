@@ -9,6 +9,7 @@ class UserModel {
 
   final String? fcmToken;
   final List<String> languages;
+  final double heldBalance;
   final DateTime createdAt;
 
   UserModel({
@@ -21,6 +22,7 @@ class UserModel {
     this.rating = 0.0,
      this.fcmToken,
     this.languages = const ['English'],
+    this.heldBalance = 0.0,
     required this.createdAt,
   });
 
@@ -36,6 +38,7 @@ class UserModel {
       'rating': rating,
        'fcmToken': fcmToken,
       'languages': languages,
+      'heldBalance': heldBalance,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -52,6 +55,7 @@ class UserModel {
       rating: (map['rating'] ?? 0.0).toDouble(),
        fcmToken: map['fcmToken'],
       languages: List<String>.from(map['languages'] ?? ['English']),
+      heldBalance: (map['heldBalance'] ?? 0.0).toDouble(),
       createdAt: DateTime.tryParse(map['createdAt'] ?? '') ?? DateTime.now(),
     );
   }

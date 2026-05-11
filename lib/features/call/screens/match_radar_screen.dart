@@ -39,6 +39,7 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
     _timeoutTimer = Timer(const Duration(minutes: 2), () {
       if (!_matchFound && mounted) {
         _requestService.cancelRequest(widget.requestId);
+        WalletService().releaseHeldFunds(50);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("No listeners available. Please try again.")),
         );
@@ -125,6 +126,7 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
   void _onSkip() async {
     // Cancel current request and create a new one
     await _requestService.cancelRequest(widget.requestId);
+    await WalletService().releaseHeldFunds(50);
     if (mounted) {
       Navigator.of(context).pop(); // Go back to home to create new request
     }
@@ -152,9 +154,12 @@ class _MatchRadarScreenState extends State<MatchRadarScreen>
               top: 16,
               left: 16,
               child: IconButton(
-                onPressed: () {
-                  _requestService.cancelRequest(widget.requestId);
-                  Navigator.of(context).pop();
+                onPressed: () async {
+                  await _requestService.cancelRequest(widget.requestId);
+                  await WalletService().releaseHeldFunds(50);
+                  if (mounted) {
+                    Navigator.of(context).pop();
+                  }
                 },
                 icon: Container(
                   padding: const EdgeInsets.all(8),

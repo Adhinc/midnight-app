@@ -350,12 +350,17 @@ class _ExplorePageState extends State<_ExplorePage> {
                         final userDoc = await FirebaseFirestore.instance
                             .collection('users').doc(user.uid).get();
                         final liveBalance = (userDoc.data()?['walletBalance'] ?? 0.0).toDouble();
-                        if (liveBalance < AppConstants.sessionCost) {
-                          if (mounted) {
+                          return;
+                        }
+
+                        // ── Wallet Hold ──
+                        final holdSuccess = await _walletService.holdFunds(AppConstants.sessionCost.toDouble());
+                        if (!holdSuccess) {
+                           if (mounted) {
                             setState(() => _isProcessing = false);
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text("Insufficient balance. Please add money first."),
+                                content: Text("Insufficient available balance. You might already have a pending request."),
                                 backgroundColor: Colors.orange,
                               ),
                             );
@@ -388,6 +393,8 @@ class _ExplorePageState extends State<_ExplorePage> {
                           );
                         }
                       } catch (e) {
+                        // Release hold on failure
+                        await _walletService.releaseHeldFunds(AppConstants.sessionCost.toDouble());
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
