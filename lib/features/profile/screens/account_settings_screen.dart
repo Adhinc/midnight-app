@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme.dart';
-import '../../auth/screens/login_screen.dart';
+import '../../auth/screens/phone_login_screen.dart';
 import 'legal_screen.dart';
 
 class AccountSettingsScreen extends StatelessWidget {
@@ -275,7 +275,7 @@ class AccountSettingsScreen extends StatelessWidget {
       if (context.mounted) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          MaterialPageRoute(builder: (_) => const PhoneLoginScreen()),
           (route) => false,
         );
       }

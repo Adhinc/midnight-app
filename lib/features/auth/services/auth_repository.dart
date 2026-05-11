@@ -7,34 +7,32 @@ class AuthRepository {
 
   User? get currentUser => _firebaseAuth.currentUser;
 
-  Future<User?> signInWithEmail(String email, String password) async {
-    try {
-      final userCredential = await _firebaseAuth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      return userCredential.user;
-    } on FirebaseAuthException catch (e) {
-      throw e.message ?? "An unknown error occurred";
-    }
+  Future<void> verifyPhoneNumber({
+    required String phoneNumber,
+    required Function(PhoneAuthCredential) verificationCompleted,
+    required Function(FirebaseAuthException) verificationFailed,
+    required Function(String, int?) codeSent,
+    required Function(String) codeAutoRetrievalTimeout,
+  }) async {
+    await _firebaseAuth.verifyPhoneNumber(
+      phoneNumber: phoneNumber,
+      verificationCompleted: verificationCompleted,
+      verificationFailed: verificationFailed,
+      codeSent: codeSent,
+      codeAutoRetrievalTimeout: codeAutoRetrievalTimeout,
+    );
   }
 
-  Future<User?> signUpWithEmail(
-    String email,
-    String password, {
-    String? handle,
+  Future<User?> signInWithOTP({
+    required String verificationId,
+    required String smsCode,
   }) async {
     try {
-      final userCredential = await _firebaseAuth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+        verificationId: verificationId,
+        smsCode: smsCode,
       );
-
-      // Update Display Name immediately
-      if (handle != null) {
-        await userCredential.user?.updateDisplayName(handle);
-      }
-
+      final userCredential = await _firebaseAuth.signInWithCredential(credential);
       return userCredential.user;
     } on FirebaseAuthException catch (e) {
       throw e.message ?? "An unknown error occurred";

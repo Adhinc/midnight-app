@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/theme.dart';
-import 'features/auth/screens/login_screen.dart';
+import 'features/auth/screens/phone_login_screen.dart';
 import 'features/home/screens/home_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -50,7 +50,7 @@ class _MidnightAppState extends State<MidnightApp> {
       title: 'Midnight',
       debugShowCheckedModeBanner: false,
       theme: MidnightTheme.darkTheme,
-      home: widget.isLoggedIn ? HomeScreen(isListener: widget.isListener) : const LoginScreen(),
+      home: widget.isLoggedIn ? HomeScreen(isListener: widget.isListener) : const PhoneLoginScreen(),
     );
   }
 }

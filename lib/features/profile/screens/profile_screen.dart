@@ -3,7 +3,7 @@ import '../../../core/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import '../../auth/screens/login_screen.dart';
+import '../../auth/screens/phone_login_screen.dart';
 import '../../auth/services/auth_repository.dart';
 import '../screens/edit_profile_screen.dart';
 import '../screens/account_settings_screen.dart';
@@ -197,7 +197,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 if (context.mounted) {
                   Navigator.pushAndRemoveUntil(
                     context,
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    MaterialPageRoute(builder: (_) => const PhoneLoginScreen()),
                     (route) => false,
                   );
                 }
