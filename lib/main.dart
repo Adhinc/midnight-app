@@ -8,6 +8,9 @@ import 'core/services/notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
+import 'features/listener/screens/listener_incoming_call_screen.dart';
+import 'features/call/services/request_service.dart';
+import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +53,8 @@ class MidnightApp extends StatefulWidget {
 
 class _MidnightAppState extends State<MidnightApp> {
   StreamSubscription<User?>? _authSub;
+  StreamSubscription<String>? _navSub;
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -58,6 +63,28 @@ class _MidnightAppState extends State<MidnightApp> {
     _authSub = FirebaseAuth.instance.authStateChanges().listen((User? user) {
       if (user != null) {
         NotificationService().initialize();
+        _setupNotificationListener();
+      }
+    });
+  }
+
+  void _setupNotificationListener() {
+    _navSub?.cancel();
+    _navSub = NotificationService().requestNavigationStream.listen((requestId) async {
+      // 1. Fetch request details to show the correct name/topic
+      final request = await RequestService().getRequestById(requestId);
+      if (request != null && _navigatorKey.currentState != null) {
+        // 2. Navigate to incoming call screen
+        _navigatorKey.currentState!.push(
+          MaterialPageRoute(
+            builder: (_) => ListenerIncomingCallScreen(
+              requestId: requestId,
+              seekerName: request.seekerHandle,
+              topic: request.topic,
+              userTier: request.listenerId != null ? "Direct Request" : "Active User",
+            ),
+          ),
+        );
       }
     });
   }
@@ -65,12 +92,14 @@ class _MidnightAppState extends State<MidnightApp> {
   @override
   void dispose() {
     _authSub?.cancel();
+    _navSub?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'Midnight',
       debugShowCheckedModeBanner: false,
       theme: MidnightTheme.darkTheme,

@@ -72,9 +72,12 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
       _requestsSub?.cancel();
       return;
     }
-    _requestsSub?.cancel();
+    final user = _auth.currentUser;
+    if (user == null) return;
+
     _requestsSub = _requestService
         .streamOpenRequests(
+          currentUserId: user.uid,
           allowedTopics: _selectedTopics.toList(),
           allowedLanguages: _selectedLanguages,
         )
@@ -304,7 +307,12 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
               const SizedBox(height: 32),
               const Text("Open Requests", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
-              ..._openRequests.map((request) => _buildRequestTile(request.seekerHandle, request.topic, "Active User", onTap: () async {
+              ..._openRequests.map((request) => _buildRequestTile(
+                request.seekerHandle, 
+                request.topic, 
+                request.listenerId != null ? "Direct Request" : "Active User",
+                isTargeted: request.listenerId != null,
+                onTap: () async {
                 final user = _auth.currentUser;
                 if (user != null) {
                   try {
@@ -316,7 +324,7 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
                           requestId: request.id,
                           seekerName: request.seekerHandle,
                           topic: request.topic,
-                          userTier: "Active User",
+                          userTier: request.listenerId != null ? "Direct Request" : "Active User",
                         )));
                       } finally {
                         if (mounted) _toggleStatus(true);
@@ -382,24 +390,36 @@ class _ListenerDashboardScreenState extends State<ListenerDashboardScreen> {
     );
   }
 
-  Widget _buildRequestTile(String name, String topic, String tag, {VoidCallback? onTap}) {
+  Widget _buildRequestTile(String name, String topic, String tag, {required bool isTargeted, VoidCallback? onTap}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: InkWell(
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: MidnightTheme.surfaceColor, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white10)),
+          decoration: BoxDecoration(
+            color: MidnightTheme.surfaceColor, 
+            borderRadius: BorderRadius.circular(16), 
+            border: Border.all(color: isTargeted ? MidnightTheme.primaryColor.withOpacity(0.5) : Colors.white10, width: isTargeted ? 2 : 1),
+          ),
           child: Row(
             children: [
-              CircleAvatar(backgroundColor: Colors.white10, child: const Icon(Icons.person, color: Colors.white70)),
+              CircleAvatar(backgroundColor: Colors.white10, child: Icon(isTargeted ? Icons.favorite : Icons.person, color: isTargeted ? MidnightTheme.primaryColor : Colors.white70)),
               const SizedBox(width: 16),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Text(topic, style: const TextStyle(color: MidnightTheme.primaryColor, fontSize: 13)),
               ])),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.amber.withOpacity(0.3))), child: Text(tag, style: const TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.bold))),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), 
+                decoration: BoxDecoration(
+                  color: isTargeted ? MidnightTheme.primaryColor.withOpacity(0.1) : Colors.amber.withOpacity(0.1), 
+                  borderRadius: BorderRadius.circular(12), 
+                  border: Border.all(color: isTargeted ? MidnightTheme.primaryColor.withOpacity(0.3) : Colors.amber.withOpacity(0.3)),
+                ), 
+                child: Text(tag, style: TextStyle(color: isTargeted ? MidnightTheme.primaryColor : Colors.amber, fontSize: 10, fontWeight: FontWeight.bold)),
+              ),
             ],
           ),
         ),

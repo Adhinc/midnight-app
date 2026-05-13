@@ -38,28 +38,30 @@ class RequestService {
   }
 
   Stream<List<HelpRequest>> streamOpenRequests({
+    required String currentUserId,
     required List<String> allowedTopics,
     required List<String> allowedLanguages,
   }) {
     if (allowedTopics.isEmpty || allowedLanguages.isEmpty) {
-      // If the listener has no topics or languages selected, they shouldn't see any requests
       return Stream.value([]);
     }
 
-    // Firestore 'whereIn' supports up to 10 items.
     return _requestsCollection
         .where('status', isEqualTo: 'open')
-        .where('topic', whereIn: allowedTopics.take(10).toList())
         .where('language', whereIn: allowedLanguages.take(10).toList())
+        .where('topic', whereIn: allowedTopics.take(10).toList())
+        .where(
+          Filter.or(
+            Filter('listenerId', isEqualTo: null),
+            Filter('listenerId', isEqualTo: currentUserId),
+          ),
+        )
         .snapshots()
         .map((snapshot) {
-          return snapshot.docs
-              .map(
-                (doc) =>
-                    HelpRequest.fromMap(doc.data() as Map<String, dynamic>),
-              )
-              .toList();
-        });
+      return snapshot.docs
+          .map((doc) => HelpRequest.fromMap(doc.data() as Map<String, dynamic>))
+          .toList();
+    });
   }
 
   // Stream a specific request by ID (for Seekers waiting for match)

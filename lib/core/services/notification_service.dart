@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -11,6 +12,10 @@ class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Stream controller to broadcast request IDs for navigation
+  final _requestNavigationController = StreamController<String>.broadcast();
+  Stream<String> get requestNavigationStream => _requestNavigationController.stream;
 
   Future<void> initialize() async {
     // 1. Request Permission from User
@@ -37,6 +42,25 @@ class NotificationService {
 
       // 3. Listen for token refreshes
       _fcm.onTokenRefresh.listen(_saveTokenToDatabase);
+
+      // 4. Handle Notification Clicks (Background -> Active)
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
+
+      // 5. Handle Initial Notification (Terminated -> Active)
+      RemoteMessage? initialMessage = await _fcm.getInitialMessage();
+      if (initialMessage != null) {
+        _handleMessage(initialMessage);
+      }
+    }
+  }
+
+  void _handleMessage(RemoteMessage message) {
+    if (kDebugMode) {
+      print('Handling notification click: ${message.data}');
+    }
+    final requestId = message.data['requestId'];
+    if (requestId != null) {
+      _requestNavigationController.add(requestId);
     }
   }
 
@@ -56,5 +80,9 @@ class NotificationService {
         }
       }
     }
+  }
+
+  void dispose() {
+    _requestNavigationController.close();
   }
 }
